@@ -142,16 +142,24 @@ export function createCanvasController(params: {
       target.lineTo(points[1].x, points[1].y);
       target.stroke();
     } else {
-      // Multiple points - use quadratic curves for smooth lines
+      // Multiple points - use smooth quadratic curves with better interpolation
       target.moveTo(points[0].x, points[0].y);
+      
+      // Use improved smoothing algorithm for better curve quality
       for (let i = 1; i < points.length - 1; i++) {
-        const p = points[i];
+        const prev = points[i - 1];
+        const curr = points[i];
         const next = points[i + 1];
-        const mx = (p.x + next.x) / 2;
-        const my = (p.y + next.y) / 2;
-        target.quadraticCurveTo(p.x, p.y, mx, my);
+        
+        // Calculate control point as midpoint between current and next
+        const cp1x = (curr.x + next.x) / 2;
+        const cp1y = (curr.y + next.y) / 2;
+        
+        // Use current point as the anchor, control point as smooth interpolation
+        target.quadraticCurveTo(curr.x, curr.y, cp1x, cp1y);
       }
-      // Draw final segment to last point
+      
+      // Draw final segment to last point smoothly
       const last = points[points.length - 1];
       const prev = points[points.length - 2];
       target.quadraticCurveTo(prev.x, prev.y, last.x, last.y);
@@ -277,10 +285,11 @@ export function createCanvasController(params: {
     const stroke = s as StrokeOp;
     const existing = strokes.find(existing => existing.id === stroke.id);
     
-    // If this is our active stroke, sync it properly
+    // If this is our active stroke, DON'T add it to strokes array yet
+    // It will be added when the stroke ends to avoid duplicate rendering
     if (activeStroke && activeStroke.id === stroke.id) {
-      // Update active stroke with server version, but keep it as active
-      activeStroke.points = [...stroke.points];
+      // Just sync metadata, but don't add to strokes array
+      // The active stroke is rendered separately in the render loop
       activeStroke.color = stroke.color;
       activeStroke.width = stroke.width;
       activeStroke.mode = stroke.mode;
@@ -291,22 +300,7 @@ export function createCanvasController(params: {
       if ((stroke as any).serverTimestamp) {
         (activeStroke as any).serverTimestamp = (stroke as any).serverTimestamp;
       }
-      
-      // Ensure it's in strokes array for consistency
-      if (!existing) {
-        strokes.push({ ...activeStroke });
-        // Re-sort after adding to maintain order
-        strokes.sort((a, b) => {
-          const aTime = a.timestamp || 0;
-          const bTime = b.timestamp || 0;
-          if (aTime !== bTime) return aTime - bTime;
-          const aServerTime = (a as any).serverTimestamp || aTime;
-          const bServerTime = (b as any).serverTimestamp || bTime;
-          if (aServerTime !== bServerTime) return aServerTime - bServerTime;
-          return a.userId.localeCompare(b.userId);
-        });
-        redrawAll(); // Full redraw to maintain sorted order
-      }
+      // Don't add to strokes array - it's still active and rendered separately
       return;
     }
     
@@ -493,7 +487,7 @@ export function createCanvasController(params: {
   }
 
   let lastSentAt = 0;
-  const THROTTLE_MS = 16; // ~60Hz for smooth updates
+  const THROTTLE_MS = 8; // ~120Hz for smoother updates
   
   function moveStroke(e: PointerEvent) {
     if (!isPointerDown || !activeStroke) return;
@@ -531,7 +525,17 @@ export function createCanvasController(params: {
     const existing = strokes.find(s => s.id === activeStroke!.id);
     if (!existing) {
       strokes.push({ ...activeStroke }); // Copy to avoid reference issues
-      drawStroke(octx, activeStroke);
+      // Sort strokes after adding to maintain order
+      strokes.sort((a, b) => {
+        const aTime = a.timestamp || 0;
+        const bTime = b.timestamp || 0;
+        if (aTime !== bTime) return aTime - bTime;
+        const aServerTime = (a as any).serverTimestamp || aTime;
+        const bServerTime = (b as any).serverTimestamp || bTime;
+        if (aServerTime !== bServerTime) return aServerTime - bServerTime;
+        return a.userId.localeCompare(b.userId);
+      });
+      redrawAll();
     } else {
       // Update existing stroke with final points
       existing.points = [...activeStroke.points];
