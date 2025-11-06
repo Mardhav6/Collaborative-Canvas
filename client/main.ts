@@ -67,7 +67,13 @@ function setupUI() {
   
   const qs = new URLSearchParams(location.search);
   const serverOverride = qs.get('server');
-  const serverUrl = serverOverride || location.origin;
+  // Prefer URL param, then build-time define, then a runtime global, then same-origin
+  // SERVICE_SERVER_URL can be injected at build time via esbuild --define
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const runtimeServer = (window as any).SERVER_URL as string | undefined;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const buildTimeServer = (typeof (globalThis as any).SERVICE_SERVER_URL !== 'undefined' ? (globalThis as any).SERVICE_SERVER_URL : undefined) as string | undefined;
+  const serverUrl = serverOverride || buildTimeServer || runtimeServer || location.origin;
   let controller: ReturnType<typeof createCanvasController>;
   
   const client = createSocketClient(serverUrl, room, {
