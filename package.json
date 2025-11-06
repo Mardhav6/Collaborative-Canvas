@@ -4,7 +4,7 @@
   "private": true,
   "description": "Real-time collaborative drawing canvas (vanilla JS/TS + Node + WebSockets)",
   "scripts": {
-    "build:client": "esbuild client/main.ts --bundle --sourcemap --outfile=client/dist/bundle.js --define:SERVICE_SERVER_URL=\"${SERVER_URL:-}\"",
+    "build:client": "esbuild client/main.ts --bundle --sourcemap --outfile=client/dist/bundle.js --define:SERVICE_SERVER_URL=\"${SERVER_URL:-\"\"}\"",
     "build": "npm run build:client",
     "start": "node server/server.js",
     "dev": "concurrently \"esbuild client/main.ts --bundle --sourcemap --outfile=client/dist/bundle.js --watch\" \"nodemon server/server.js\""
