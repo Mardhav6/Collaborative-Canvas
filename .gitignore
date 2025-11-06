@@ -1,0 +1,19 @@
+# dependencies
+node_modules/
+
+# build output
+client/dist/
+!client/dist/bundle.js
+
+# local data
+data/
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# env
+.env
+
+

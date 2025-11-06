@@ -1,0 +1,25 @@
+{
+  "name": "collaborative-canvas",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Real-time collaborative drawing canvas (vanilla JS/TS + Node + WebSockets)",
+  "scripts": {
+    "build:client": "esbuild client/main.ts --bundle --sourcemap --outfile=client/dist/bundle.js",
+    "build": "npm run build:client",
+    "start": "node server/server.js",
+    "dev": "concurrently \"esbuild client/main.ts --bundle --sourcemap --outfile=client/dist/bundle.js --watch\" \"nodemon server/server.js\""
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "esbuild": "^0.24.0",
+    "nodemon": "^3.1.0",
+    "typescript": "^5.6.3"
+  }
+}
+
+
