@@ -142,27 +142,33 @@ export function createCanvasController(params: {
       target.lineTo(points[1].x, points[1].y);
       target.stroke();
     } else {
-      // Multiple points - use smooth quadratic curves with better interpolation
+      // Multiple points - use smooth quadratic curves with improved interpolation
       target.moveTo(points[0].x, points[0].y);
       
-      // Use improved smoothing algorithm for better curve quality
-      for (let i = 1; i < points.length - 1; i++) {
+      // For 3+ points, use smooth quadratic curves
+      let i = 1;
+      
+      // Draw smooth curves through all points
+      while (i < points.length) {
         const prev = points[i - 1];
         const curr = points[i];
-        const next = points[i + 1];
         
-        // Calculate control point as midpoint between current and next
-        const cp1x = (curr.x + next.x) / 2;
-        const cp1y = (curr.y + next.y) / 2;
-        
-        // Use current point as the anchor, control point as smooth interpolation
-        target.quadraticCurveTo(curr.x, curr.y, cp1x, cp1y);
+        if (i === points.length - 1) {
+          // Last point - draw directly to it with smooth curve
+          target.quadraticCurveTo(prev.x, prev.y, curr.x, curr.y);
+        } else {
+          // Middle points - use smooth interpolation
+          const next = points[i + 1];
+          // Control point is the current point, end point is midpoint to next
+          const endX = (curr.x + next.x) / 2;
+          const endY = (curr.y + next.y) / 2;
+          target.quadraticCurveTo(curr.x, curr.y, endX, endY);
+          i++; // Skip next point since we already drew to its midpoint
+          continue;
+        }
+        i++;
       }
       
-      // Draw final segment to last point smoothly
-      const last = points[points.length - 1];
-      const prev = points[points.length - 2];
-      target.quadraticCurveTo(prev.x, prev.y, last.x, last.y);
       target.stroke();
     }
     target.restore();
@@ -488,10 +494,28 @@ export function createCanvasController(params: {
 
   let lastSentAt = 0;
   const THROTTLE_MS = 8; // ~120Hz for smoother updates
+  const MIN_DISTANCE = 2; // Minimum distance between points to reduce noise
   
   function moveStroke(e: PointerEvent) {
     if (!isPointerDown || !activeStroke) return;
     const p = canvasPointFromEvent(e);
+    
+    // Filter points that are too close together for smoother lines
+    const lastPoint = activeStroke.points[activeStroke.points.length - 1];
+    if (lastPoint) {
+      const dx = p.x - lastPoint.x;
+      const dy = p.y - lastPoint.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      
+      // Only add point if it's far enough from the last point
+      if (distance < MIN_DISTANCE) {
+        // Update the last point's time but keep position for smoother curves
+        lastPoint.t = p.t;
+        needsRedraw = true;
+        e.preventDefault();
+        return;
+      }
+    }
     
     // Always add the point for local rendering
     activeStroke.points.push(p);
@@ -693,7 +717,8 @@ export function createCanvasController(params: {
     
     // Always render drawing layer if we need redraw or are actively drawing
     // Also do periodic full redraws to catch any missed updates (every 100ms)
-    const shouldRedraw = needsRedraw || (activeStroke && isPointerDown) || (now - lastFullRedraw > 100);
+    const isActivelyDrawing = activeStroke && isPointerDown;
+    const shouldRedraw = needsRedraw || isActivelyDrawing || (now - lastFullRedraw > 100);
     
     if (shouldRedraw) {
       // Redraw offscreen canvas if strokes changed
@@ -706,8 +731,8 @@ export function createCanvasController(params: {
         ctx.drawImage(offscreen, 0, 0);
       }
       
-      // render active stroke preview above committed layer
-      if (activeStroke && !activeStroke.isDeleted && activeStroke.points.length > 0) {
+      // Always render active stroke preview above committed layer when drawing
+      if (isActivelyDrawing && activeStroke && !activeStroke.isDeleted && activeStroke.points.length > 0) {
         drawStroke(ctx, activeStroke);
       }
       if (activeShape) {
