@@ -33,12 +33,16 @@ function setupUI() {
   const debugRenderOrderEl = document.getElementById('debug-render-order') as HTMLInputElement;
 
   // Layout sizing
+  let isDrawingNow = false;
   function sizeStage() {
     const stage = document.getElementById('stage') as HTMLElement;
     const sidebar = document.getElementById('sidebar') as HTMLElement;
     stage.style.height = `${window.innerHeight}px`;
-    fitCanvasToContainer(canvas);
-    controller.redrawAll();
+    // Avoid resizing canvas while drawing to prevent stroke shift
+    if (!isDrawingNow) {
+      fitCanvasToContainer(canvas);
+      controller.redrawAll();
+    }
   }
 
   let currentTool: Tool = 'brush';
@@ -216,6 +220,11 @@ function setupUI() {
   });
 
   window.addEventListener('resize', sizeStage);
+  // Track drawing state locally to pause resize while drawing
+  canvas.addEventListener('pointerdown', () => { isDrawingNow = true; }, { passive: true });
+  const endDraw = () => { isDrawingNow = false; sizeStage(); };
+  canvas.addEventListener('pointerup', endDraw, { passive: true });
+  canvas.addEventListener('pointerleave', endDraw, { passive: true });
   sizeStage();
   setActiveTool('brush');
 }
