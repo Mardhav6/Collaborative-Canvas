@@ -3,7 +3,7 @@ services:
     name: collaborative-canvas-server
     env: node
     plan: free
-    buildCommand: "npm install"
+    buildCommand: "npm ci && npm run build"
     startCommand: "node server/server.js"
     envVars:
       - key: NODE_VERSION
