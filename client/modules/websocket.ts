@@ -30,7 +30,8 @@ export function createSocketClient(serverUrl: string, room: string, hooks: {
   onFps(fps: number): void;
 }): NetworkClient {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const socket: any = (window as any).io(serverUrl, { transports: ['websocket'], path: '/socket.io' });
+  // Allow default transports (polling + websockets) for better cross-origin reliability
+  const socket: any = (window as any).io(serverUrl, { path: '/socket.io' });
   const myId = crypto.randomUUID();
   let myColor = randomColorFromId(myId);
   let fpsSamples = 0; let fpsLast = performance.now(); let fps = 0;
