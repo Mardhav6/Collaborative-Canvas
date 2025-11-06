@@ -36,33 +36,48 @@ export function createSocketClient(serverUrl: string, room: string, hooks: {
   let myColor = randomColorFromId(myId);
   let fpsSamples = 0; let fpsLast = performance.now(); let fps = 0;
 
+  let hasJoined = false;
   function joinRoom() {
-    if (socket.connected) {
+    if (socket.connected && !hasJoined) {
+      console.log('[socket] emitting join', { room, userId: myId, color: myColor });
       socket.emit('join', { room, userId: myId, color: myColor });
+      hasJoined = true;
     }
   }
 
   // Join on initial connect and on any reconnects
   socket.on('connect', () => {
     console.log('[socket] connected', { id: socket.id, url: serverUrl });
-    joinRoom();
+    hasJoined = false; // Reset on reconnect
+    // Use setTimeout to ensure socket is fully ready
+    setTimeout(() => {
+      joinRoom();
+    }, 100);
     hooks.onLatency(0); // Reset latency on reconnect
   });
 
   socket.on('disconnect', () => {
     console.warn('[socket] disconnected');
+    hasJoined = false; // Reset on disconnect
     hooks.onLatency(-1); // Indicate disconnected
   });
 
   socket.on('connect_error', (err: Error) => {
     console.error('[socket] connect_error', err);
+    hasJoined = false;
   });
 
   // Join immediately if already connected
   if (socket.connected) {
-    joinRoom();
+    setTimeout(() => {
+      joinRoom();
+    }, 100);
   } else {
-    socket.once('connect', joinRoom);
+    socket.once('connect', () => {
+      setTimeout(() => {
+        joinRoom();
+      }, 100);
+    });
   }
 
   socket.on('presence', (users: PresenceUser[]) => {

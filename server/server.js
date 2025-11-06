@@ -70,21 +70,24 @@ const io = new Server(server, { cors: { origin: '*' } });
 const rooms = createRooms();
 
 io.on('connection', (socket) => {
+  console.log(`[server] client connected`, { socketId: socket.id });
   let joinedRoom = null;
   let userId = null;
   let userColor = null;
 
   socket.on('join', ({ room, userId: uid, color }) => {
+    console.log(`[server] join received`, { room, userId: uid, socketId: socket.id });
     userId = uid; userColor = color || '#000';
     joinedRoom = room || 'lobby';
     socket.join(joinedRoom);
     const r = rooms.get(joinedRoom);
     r.addUser({ id: userId, socketId: socket.id, color: userColor });
+    const presence = r.getPresence();
+    console.log(`[room:${joinedRoom}] users connected: ${presence.length}`, presence.map(u => u.id));
     // initial state
     socket.emit('state:init', r.state.ops);
     // presence to all
-    io.to(joinedRoom).emit('presence', r.getPresence());
-    console.log(`[room:${joinedRoom}] users connected: ${r.getPresence().length}`);
+    io.to(joinedRoom).emit('presence', presence);
   });
 
   socket.on('ping:latency', (ack) => { if (ack) ack(); });
