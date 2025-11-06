@@ -44,16 +44,18 @@ export function createSocketClient(serverUrl: string, room: string, hooks: {
 
   // Join on initial connect and on any reconnects
   socket.on('connect', () => {
+    console.log('[socket] connected', { id: socket.id, url: serverUrl });
     joinRoom();
     hooks.onLatency(0); // Reset latency on reconnect
   });
 
   socket.on('disconnect', () => {
+    console.warn('[socket] disconnected');
     hooks.onLatency(-1); // Indicate disconnected
   });
 
   socket.on('connect_error', (err: Error) => {
-    console.error('Connection error:', err);
+    console.error('[socket] connect_error', err);
   });
 
   // Join immediately if already connected
@@ -63,7 +65,10 @@ export function createSocketClient(serverUrl: string, room: string, hooks: {
     socket.once('connect', joinRoom);
   }
 
-  socket.on('presence', (users: PresenceUser[]) => hooks.onPresence(users));
+  socket.on('presence', (users: PresenceUser[]) => {
+    console.log('[socket] presence', users?.length);
+    hooks.onPresence(users);
+  });
 
   // Latency Ping
   setInterval(() => {

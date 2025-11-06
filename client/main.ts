@@ -80,8 +80,10 @@ function setupUI() {
   const serverUrl = serverOverride || buildTimeServer || runtimeServer || location.origin;
   let controller: ReturnType<typeof createCanvasController>;
   
+  console.log('[client] serverUrl', serverUrl, 'room', room);
   const client = createSocketClient(serverUrl, room, {
     onPresence(users) {
+      console.log('[client] onPresence ->', users.length);
       userList.innerHTML = '';
       userCountEl.textContent = users.length.toString();
       
