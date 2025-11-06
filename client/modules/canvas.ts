@@ -114,6 +114,32 @@ export function createCanvasController(params: {
     target.clearRect(0, 0, canvas.width, canvas.height);
   }
 
+  // Smooth points using moving average for better curve quality
+  function smoothPoints(points: Point[]): Point[] {
+    if (points.length <= 2) return points;
+    
+    const smoothed: Point[] = [points[0]]; // Keep first point
+    
+    for (let i = 1; i < points.length - 1; i++) {
+      const prev = points[i - 1];
+      const curr = points[i];
+      const next = points[i + 1];
+      
+      // Weighted average: more weight on current point, less on neighbors
+      const smoothedX = prev.x * 0.25 + curr.x * 0.5 + next.x * 0.25;
+      const smoothedY = prev.y * 0.25 + curr.y * 0.5 + next.y * 0.25;
+      
+      smoothed.push({
+        x: smoothedX,
+        y: smoothedY,
+        t: curr.t
+      });
+    }
+    
+    smoothed.push(points[points.length - 1]); // Keep last point
+    return smoothed;
+  }
+
   function drawStroke(target: CanvasRenderingContext2D, s: StrokeOp) {
     if (!s || s.points.length < 1 || s.isDeleted) return;
     
@@ -130,7 +156,12 @@ export function createCanvasController(params: {
     target.lineCap = 'round';
 
     target.beginPath();
-    const points = s.points;
+    let points = s.points;
+    
+    // Apply smoothing for better curve quality
+    if (points.length > 2) {
+      points = smoothPoints(points);
+    }
     
     if (points.length === 1) {
       // Single point - draw as filled circle
@@ -142,31 +173,28 @@ export function createCanvasController(params: {
       target.lineTo(points[1].x, points[1].y);
       target.stroke();
     } else {
-      // Multiple points - use smooth quadratic curves with improved interpolation
+      // Multiple points - use very smooth quadratic curves
       target.moveTo(points[0].x, points[0].y);
       
-      // For 3+ points, use smooth quadratic curves
-      let i = 1;
-      
-      // Draw smooth curves through all points
-      while (i < points.length) {
+      // Use improved curve algorithm for maximum smoothness
+      for (let i = 1; i < points.length; i++) {
         const prev = points[i - 1];
         const curr = points[i];
         
         if (i === points.length - 1) {
-          // Last point - draw directly to it with smooth curve
+          // Last point - smooth curve to it
           target.quadraticCurveTo(prev.x, prev.y, curr.x, curr.y);
         } else {
-          // Middle points - use smooth interpolation
+          // Middle points - use smooth control points
           const next = points[i + 1];
-          // Control point is the current point, end point is midpoint to next
-          const endX = (curr.x + next.x) / 2;
-          const endY = (curr.y + next.y) / 2;
-          target.quadraticCurveTo(curr.x, curr.y, endX, endY);
-          i++; // Skip next point since we already drew to its midpoint
-          continue;
+          // Calculate smooth control point
+          const cpX = curr.x;
+          const cpY = curr.y;
+          // End point is weighted average for smoother transition
+          const endX = curr.x * 0.7 + next.x * 0.3;
+          const endY = curr.y * 0.7 + next.y * 0.3;
+          target.quadraticCurveTo(cpX, cpY, endX, endY);
         }
-        i++;
       }
       
       target.stroke();
@@ -494,22 +522,22 @@ export function createCanvasController(params: {
 
   let lastSentAt = 0;
   const THROTTLE_MS = 8; // ~120Hz for smoother updates
-  const MIN_DISTANCE = 2; // Minimum distance between points to reduce noise
+  const MIN_DISTANCE = 1; // Reduced minimum distance for smoother capture
   
   function moveStroke(e: PointerEvent) {
     if (!isPointerDown || !activeStroke) return;
     const p = canvasPointFromEvent(e);
     
-    // Filter points that are too close together for smoother lines
+    // Always add points for maximum smoothness - filtering happens in smoothing function
     const lastPoint = activeStroke.points[activeStroke.points.length - 1];
     if (lastPoint) {
       const dx = p.x - lastPoint.x;
       const dy = p.y - lastPoint.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
       
-      // Only add point if it's far enough from the last point
-      if (distance < MIN_DISTANCE) {
-        // Update the last point's time but keep position for smoother curves
+      // Only filter extremely close points to reduce noise
+      if (distance < MIN_DISTANCE && activeStroke.points.length > 1) {
+        // Update the last point's time but keep position
         lastPoint.t = p.t;
         needsRedraw = true;
         e.preventDefault();
@@ -517,7 +545,7 @@ export function createCanvasController(params: {
       }
     }
     
-    // Always add the point for local rendering
+    // Always add the point for local rendering - smoothing will handle it
     activeStroke.points.push(p);
     needsRedraw = true;
     
