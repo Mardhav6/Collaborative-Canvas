@@ -157,6 +157,17 @@
     </main>
   </div>
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script>
+    // Fallback: when hosted on Vercel and no SERVER_URL injected, point to Render server
+    (function(){
+      try {
+        var isVercel = /vercel\.app$/.test(location.hostname);
+        if (isVercel && !('SERVER_URL' in window) && !('SERVICE_SERVER_URL' in (window))) {
+          window.SERVER_URL = 'https://collaborative-canvas-server-8lyl.onrender.com';
+        }
+      } catch(e) {}
+    })();
+  </script>
   <script src="./dist/bundle.js"></script>
 </body>
 </html>
