@@ -98,6 +98,8 @@ export function createCanvasController(params: {
   let debugRenderOrder = false;
   const imageCache = new Map<string, HTMLImageElement>();
   const imageLoading = new Set<string>();
+  // Track locally committed strokes - never allow server to overwrite these
+  const locallyCommittedStrokes = new Set<string>();
 
   const dpr = Math.max(window.devicePixelRatio || 1, 1);
 
@@ -335,6 +337,14 @@ export function createCanvasController(params: {
 
   network.onStrokeAppended((s) => {
     const stroke = s as StrokeOp;
+    
+    // ABSOLUTE BLOCK: If this stroke is locally committed, IGNORE completely
+    if (locallyCommittedStrokes.has(stroke.id)) {
+      // This stroke was committed locally with correct coordinates
+      // Never allow server to overwrite it
+      return;
+    }
+    
     const existing = strokes.find(existing => existing.id === stroke.id);
     
     // If this is our active stroke, IGNORE server updates completely while drawing
@@ -391,6 +401,13 @@ export function createCanvasController(params: {
   });
 
   network.onStrokePatched(({ id, points }) => {
+    // ABSOLUTE BLOCK: If this stroke is locally committed, IGNORE completely
+    if (locallyCommittedStrokes.has(id)) {
+      // This stroke was committed locally with correct coordinates
+      // Never allow server to overwrite it
+      return;
+    }
+    
     // IGNORE server patches for active strokes while drawing
     // This prevents server updates from interfering with smooth local rendering
     if (activeStroke && activeStroke.id === id && isPointerDown) {
@@ -446,31 +463,49 @@ export function createCanvasController(params: {
       const newShapes = list.filter(o => o.type === 'shape') as (ShapeRect | ShapeCircle | ShapeText | ShapeImage)[];
       const myUserId = network.userId();
       
-      // Preserve our own committed strokes - they have the correct local coordinates
-      const ourStrokes = strokes.filter(s => s.userId === myUserId && s.id !== activeStroke?.id);
+      // CRITICAL: Preserve ALL locally committed strokes - never overwrite them
+      // These have the correct local coordinates and must be preserved
+      const ourCommittedStrokes = strokes.filter(s => 
+        locallyCommittedStrokes.has(s.id) || (s.userId === myUserId && s.id !== activeStroke?.id)
+      );
       
       // Preserve active stroke if we're currently drawing
       if (activeStroke) {
         const activeInState = newStrokes.find(s => s.id === activeStroke!.id);
         if (!activeInState) {
           // Our active stroke isn't in server state yet - keep it
-          strokes = [...newStrokes.filter(s => s.userId !== myUserId), ...ourStrokes, activeStroke];
+          strokes = [
+            ...newStrokes.filter(s => !locallyCommittedStrokes.has(s.id) && s.userId !== myUserId), 
+            ...ourCommittedStrokes, 
+            activeStroke
+          ];
           shapes = newShapes;
         } else {
-          // Server has it - but keep our local version if we're drawing
-          if (isPointerDown) {
-            strokes = [...newStrokes.filter(s => s.userId !== myUserId), ...ourStrokes, activeStroke];
+          // Server has it - but keep our local version if we're drawing or committed
+          if (isPointerDown || locallyCommittedStrokes.has(activeStroke.id)) {
+            strokes = [
+              ...newStrokes.filter(s => !locallyCommittedStrokes.has(s.id) && s.userId !== myUserId), 
+              ...ourCommittedStrokes, 
+              activeStroke
+            ];
           } else {
-            strokes = [...newStrokes.filter(s => s.userId !== myUserId), ...ourStrokes];
+            strokes = [
+              ...newStrokes.filter(s => !locallyCommittedStrokes.has(s.id) && s.userId !== myUserId), 
+              ...ourCommittedStrokes
+            ];
           }
           shapes = newShapes;
-          if (!isPointerDown) {
-            activeStroke = activeInState; // Only sync if not drawing
+          if (!isPointerDown && !locallyCommittedStrokes.has(activeStroke.id)) {
+            activeStroke = activeInState; // Only sync if not drawing and not committed
           }
         }
       } else {
         // Merge server strokes with our local committed strokes
-        strokes = [...newStrokes.filter(s => s.userId !== myUserId), ...ourStrokes];
+        // NEVER overwrite locally committed strokes
+        strokes = [
+          ...newStrokes.filter(s => !locallyCommittedStrokes.has(s.id) && s.userId !== myUserId), 
+          ...ourCommittedStrokes
+        ];
         shapes = newShapes;
       }
       // Sort by timestamp for consistent conflict resolution
@@ -634,6 +669,10 @@ export function createCanvasController(params: {
     const strokeToCommit = { ...activeStroke };
     // Deep copy points array to prevent any modifications
     strokeToCommit.points = activeStroke.points.map(p => ({ ...p }));
+    const committedStrokeId = strokeToCommit.id;
+    
+    // MARK AS LOCALLY COMMITTED - server updates will never overwrite this
+    locallyCommittedStrokes.add(committedStrokeId);
     
     const existing = strokes.find(s => s.id === activeStroke!.id);
     if (!existing) {
@@ -657,8 +696,6 @@ export function createCanvasController(params: {
       existing.mode = strokeToCommit.mode;
     }
     
-    // Mark stroke as committed so server updates don't overwrite it
-    const committedStrokeId = strokeToCommit.id;
     activeStroke = null;
     
     // Redraw with committed stroke
