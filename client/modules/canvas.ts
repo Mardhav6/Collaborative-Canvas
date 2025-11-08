@@ -666,35 +666,50 @@ export function createCanvasController(params: {
     }
     
     // Commit the active stroke to the strokes array - preserve local smooth points
-    const strokeToCommit = { ...activeStroke };
-    // Deep copy points array to prevent any modifications
-    strokeToCommit.points = activeStroke.points.map(p => ({ ...p }));
-    const committedStrokeId = strokeToCommit.id;
+    // Create a COMPLETE immutable copy to prevent any modifications
+    const committedStrokeId = activeStroke.id;
     
-    // MARK AS LOCALLY COMMITTED - server updates will never overwrite this
+    // MARK AS LOCALLY COMMITTED FIRST - before any operations
+    // This prevents any race conditions with server updates
     locallyCommittedStrokes.add(committedStrokeId);
     
-    const existing = strokes.find(s => s.id === activeStroke!.id);
-    if (!existing) {
-      // Add the stroke with local points - these are the accurate, smooth points
-      strokes.push(strokeToCommit);
-      // Sort strokes after adding to maintain order
-      strokes.sort((a, b) => {
-        const aTime = a.timestamp || 0;
-        const bTime = b.timestamp || 0;
-        if (aTime !== bTime) return aTime - bTime;
-        const aServerTime = (a as any).serverTimestamp || aTime;
-        const bServerTime = (b as any).serverTimestamp || bTime;
-        if (aServerTime !== bServerTime) return aServerTime - bServerTime;
-        return a.userId.localeCompare(b.userId);
-      });
-    } else {
-      // Update existing stroke with final LOCAL points - don't let server overwrite
-      existing.points = strokeToCommit.points;
-      existing.color = strokeToCommit.color;
-      existing.width = strokeToCommit.width;
-      existing.mode = strokeToCommit.mode;
+    const strokeToCommit: StrokeOp = {
+      id: activeStroke.id,
+      userId: activeStroke.userId,
+      type: 'stroke',
+      mode: activeStroke.mode,
+      color: activeStroke.color,
+      width: activeStroke.width,
+      points: activeStroke.points.map(p => ({ x: p.x, y: p.y, t: p.t })), // Deep immutable copy
+      timestamp: activeStroke.timestamp,
+    };
+    if ((activeStroke as any).serverTimestamp) {
+      (strokeToCommit as any).serverTimestamp = (activeStroke as any).serverTimestamp;
     }
+    
+    // Remove any existing stroke with this ID and add our committed version
+    // This ensures we're not updating a reference that might be modified
+    // CRITICAL: Use the exact coordinates from activeStroke - don't let anything modify them
+    const existingIndex = strokes.findIndex(s => s.id === committedStrokeId);
+    if (existingIndex >= 0) {
+      // Replace completely - don't modify existing object
+      // This ensures the committed stroke has the exact coordinates that were drawn
+      strokes[existingIndex] = strokeToCommit;
+    } else {
+      // Add new stroke with exact coordinates
+      strokes.push(strokeToCommit);
+    }
+    
+    // Sort strokes after adding to maintain order
+    strokes.sort((a, b) => {
+      const aTime = a.timestamp || 0;
+      const bTime = b.timestamp || 0;
+      if (aTime !== bTime) return aTime - bTime;
+      const aServerTime = (a as any).serverTimestamp || aTime;
+      const bServerTime = (b as any).serverTimestamp || bTime;
+      if (aServerTime !== bServerTime) return aServerTime - bServerTime;
+      return a.userId.localeCompare(b.userId);
+    });
     
     activeStroke = null;
     
