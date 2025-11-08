@@ -102,6 +102,8 @@ export function createCanvasController(params: {
   const locallyCommittedStrokes = new Set<string>();
   // Store original coordinates for committed strokes - these are the source of truth
   const committedStrokeCoordinates = new Map<string, Point[]>();
+  // Store canvas dimensions at commit time to detect resizing issues
+  const committedStrokeCanvasSize = new Map<string, { width: number; height: number }>();
 
   const dpr = Math.max(window.devicePixelRatio || 1, 1);
 
@@ -161,7 +163,23 @@ export function createCanvasController(params: {
       const storedPoints = committedStrokeCoordinates.get(s.id);
       if (storedPoints && storedPoints.length > 0) {
         // Use stored coordinates directly - these are the source of truth
-        pointsToRender = storedPoints;
+        // Create a fresh array to ensure no reference sharing
+        pointsToRender = storedPoints.map(p => ({ x: p.x, y: p.y, t: p.t }));
+        
+        // CRITICAL: Also update the stroke object's points array to match
+        // This ensures the stroke object in the array always has correct coordinates
+        // Do this every time we render to prevent any drift
+        const firstStoredPoint = storedPoints[0];
+        const firstStrokePoint = s.points[0];
+        if (!firstStrokePoint || 
+            Math.abs(firstStrokePoint.x - firstStoredPoint.x) > 0.01 || 
+            Math.abs(firstStrokePoint.y - firstStoredPoint.y) > 0.01) {
+          // Coordinates don't match - this means something modified the stroke object
+          // Log a warning and restore from stored coordinates
+          console.warn(`[canvas] Stroke ${s.id} coordinates were modified! Stored: (${firstStoredPoint.x.toFixed(2)}, ${firstStoredPoint.y.toFixed(2)}), Stroke object: (${firstStrokePoint?.x.toFixed(2) || 'undefined'}, ${firstStrokePoint?.y.toFixed(2) || 'undefined'}). Restoring from stored coordinates.`);
+          // Replace the entire points array to ensure consistency
+          s.points = pointsToRender.map(p => ({ x: p.x, y: p.y, t: p.t }));
+        }
       } else {
         // Fallback: if no stored coordinates, use stroke points but log warning
         console.warn(`[canvas] Committed stroke ${s.id} has no stored coordinates, using stroke points`);
@@ -747,20 +765,19 @@ export function createCanvasController(params: {
     // This prevents any race conditions with server updates
     locallyCommittedStrokes.add(committedStrokeId);
     
-    // Store the exact coordinates as drawn - these are in CSS pixel space
-    // and will be rendered correctly with the canvas transform
-    const exactPoints = activeStroke.points.map(p => ({ 
-      x: Number(p.x.toFixed(2)), // Round to prevent floating point issues
-      y: Number(p.y.toFixed(2)), 
+    // CRITICAL: Store original coordinates DIRECTLY from activeStroke.points
+    // Don't round yet - preserve maximum precision
+    // These coordinates are in CSS pixel space and will be rendered correctly with the canvas transform
+    // Create a deep copy to ensure no references are shared with activeStroke
+    const lockedPoints = activeStroke.points.map(p => ({ 
+      x: p.x, // Preserve original precision
+      y: p.y, 
       t: p.t 
     }));
     
-    // CRITICAL: Store original coordinates in a separate Map
-    // This is the source of truth - these coordinates will NEVER be modified
-    // Create a deep copy to ensure no references are shared
-    // Store coordinates with high precision to prevent rounding errors
-    const lockedPoints = exactPoints.map(p => ({ 
-      x: Number(p.x.toFixed(4)), // Higher precision to prevent drift
+    // Now round for storage (4 decimal places for sub-pixel accuracy)
+    const lockedPointsRounded = lockedPoints.map(p => ({ 
+      x: Number(p.x.toFixed(4)), 
       y: Number(p.y.toFixed(4)), 
       t: p.t 
     }));
@@ -770,17 +787,34 @@ export function createCanvasController(params: {
     const commitCanvasWidth = rect.width;
     const commitCanvasHeight = rect.height;
     
-    // Store coordinates along with canvas dimensions for validation
-    committedStrokeCoordinates.set(committedStrokeId, lockedPoints);
+    // Store coordinates along with canvas dimensions
+    // Use rounded version for storage to prevent floating point drift
+    committedStrokeCoordinates.set(committedStrokeId, lockedPointsRounded);
+    committedStrokeCanvasSize.set(committedStrokeId, { 
+      width: commitCanvasWidth, 
+      height: commitCanvasHeight 
+    });
     
     // Debug: Log first and last point to verify coordinates are correct
-    if (lockedPoints.length > 0) {
-      console.log(`[canvas] Committed stroke ${committedStrokeId}: first point (${lockedPoints[0].x.toFixed(2)}, ${lockedPoints[0].y.toFixed(2)}), last point (${lockedPoints[lockedPoints.length - 1].x.toFixed(2)}, ${lockedPoints[lockedPoints.length - 1].y.toFixed(2)}), canvas: ${commitCanvasWidth}x${commitCanvasHeight}`);
+    if (lockedPointsRounded.length > 0) {
+      console.log(`[canvas] Committed stroke ${committedStrokeId}: first point (${lockedPointsRounded[0].x.toFixed(4)}, ${lockedPointsRounded[0].y.toFixed(4)}), last point (${lockedPointsRounded[lockedPointsRounded.length - 1].x.toFixed(4)}, ${lockedPointsRounded[lockedPointsRounded.length - 1].y.toFixed(4)}), canvas: ${commitCanvasWidth.toFixed(2)}x${commitCanvasHeight.toFixed(2)}`);
+      console.log(`[canvas] Original activeStroke.points[0]: (${activeStroke.points[0].x}, ${activeStroke.points[0].y})`);
     }
     
-    // Create stroke object with locked coordinates
-    const lockedPointsArray = lockedPoints.map(p => ({ x: p.x, y: p.y, t: p.t }));
+    // CRITICAL: Verify coordinates immediately after storing
+    // This helps catch any issues with coordinate storage
+    setTimeout(() => {
+      const stored = committedStrokeCoordinates.get(committedStrokeId);
+      const storedSize = committedStrokeCanvasSize.get(committedStrokeId);
+      if (stored && stored.length > 0 && storedSize) {
+        const currentRect = canvas.getBoundingClientRect();
+        if (Math.abs(currentRect.width - storedSize.width) > 1 || Math.abs(currentRect.height - storedSize.height) > 1) {
+          console.warn(`[canvas] Canvas resized after commit! Stroke ${committedStrokeId} was committed at ${storedSize.width}x${storedSize.height}, but canvas is now ${currentRect.width.toFixed(2)}x${currentRect.height.toFixed(2)}`);
+        }
+      }
+    }, 100);
     
+    // Create stroke object with locked coordinates (use rounded version for consistency)
     const strokeToCommit: StrokeOp = {
       id: activeStroke.id,
       userId: activeStroke.userId,
@@ -788,7 +822,7 @@ export function createCanvasController(params: {
       mode: activeStroke.mode,
       color: activeStroke.color,
       width: activeStroke.width,
-      points: lockedPointsArray, // Use locked coordinates
+      points: lockedPointsRounded.map(p => ({ x: p.x, y: p.y, t: p.t })), // Use locked rounded coordinates
       timestamp: activeStroke.timestamp,
     };
     if ((activeStroke as any).serverTimestamp) {
@@ -797,7 +831,7 @@ export function createCanvasController(params: {
     
     // Store a reference to the exact coordinates for verification
     (strokeToCommit as any).__localCommit = true;
-    (strokeToCommit as any).__originalPoints = exactPoints.map(p => ({ x: p.x, y: p.y }));
+    (strokeToCommit as any).__originalPoints = lockedPointsRounded.map(p => ({ x: p.x, y: p.y }));
     
     // Remove any existing stroke with this ID and add our committed version
     // This ensures we're not updating a reference that might be modified
