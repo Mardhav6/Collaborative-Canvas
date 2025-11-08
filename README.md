@@ -14,13 +14,13 @@ A real-time collaborative drawing canvas built with vanilla TypeScript/JavaScrip
 - **Responsive Design**: Works on desktop and mobile devices
 - **Persistent Storage**: Canvas state is saved and restored on server restart
 
-## 🚀 Quick Start
+## 🚀 Setup Instructions
 
 ### Prerequisites
 
 - Node.js 18+ and npm
 
-### Installation
+### Quick Start
 
 ```bash
 # Clone the repository
@@ -29,12 +29,19 @@ cd Collaborative-Canvas
 
 # Install dependencies
 npm install
+
+# Start the server
+npm start
 ```
 
-### Development
+The server will start on `http://localhost:3001`. Open your browser and navigate to that URL to start drawing!
+
+### Development Mode
+
+For development with hot reload:
 
 ```bash
-# Start development server with hot reload
+# Start development server with auto-rebuild
 npm run dev
 ```
 
@@ -53,13 +60,147 @@ npm run build
 npm start
 ```
 
-### Testing with Multiple Users
+## 🧪 How to Test with Multiple Users
 
-1. Start the server: `npm start`
-2. Open multiple browser windows/tabs to `http://localhost:3001`
-3. Use different rooms: `http://localhost:3001/?room=test` (each room has its own canvas)
-4. Draw overlapping strokes with different colors to see real-time sync
-5. Enable "Show render order" in the sidebar to see conflict resolution
+Testing with multiple users is straightforward:
+
+1. **Start the server**: Run `npm start` in the project directory
+2. **Open multiple browser windows/tabs**: Navigate to `http://localhost:3001` in each window
+3. **Use different rooms** (optional): Add `?room=test` to the URL to create separate drawing rooms
+   - Example: `http://localhost:3001/?room=test`
+   - Each room has its own independent canvas
+4. **Draw simultaneously**: 
+   - Draw overlapping strokes with different colors to see real-time sync
+   - Watch as strokes appear on all connected clients in real-time
+   - Observe presence indicators showing other users' cursors
+5. **Test conflict resolution**: 
+   - Enable "Show render order" in the sidebar to see how strokes are ordered
+   - Draw overlapping strokes simultaneously from different clients
+   - Notice how strokes are consistently ordered across all clients
+6. **Test global operations**:
+   - Use undo/redo buttons to test global undo/redo functionality
+   - Use clear button to test global clear functionality
+   - Verify that operations sync across all connected clients
+
+### Testing Tips
+
+- **Latency Testing**: Check the latency display in the sidebar to monitor connection quality
+- **FPS Monitoring**: Monitor FPS to ensure smooth rendering (should be ~60fps)
+- **Room Isolation**: Test that different rooms maintain separate canvas states
+- **Reconnection**: Disconnect and reconnect to test state restoration
+
+## 🐛 Known Limitations & Bugs
+
+### Limitations
+
+1. **Global Undo/Redo**: 
+   - Undo/redo is linear and affects the most recent visible operation
+   - No per-user undo/redo support
+   - Undo/redo affects all users in the room simultaneously
+
+2. **State Management**:
+   - Long sessions can accumulate many strokes, potentially impacting performance
+   - No automatic state compaction or stroke merging
+   - Consider implementing periodic cleanup for very long sessions
+
+3. **Eraser Behavior**:
+   - Eraser uses `destination-out` blending mode
+   - Subtle visual differences may appear across different browsers
+   - Eraser affects all underlying strokes regardless of order
+
+4. **Authentication**:
+   - No user authentication system
+   - User identity is ephemeral per session (UUID-based)
+   - Users are identified only by their session ID
+
+5. **Persistence**:
+   - Canvas state is stored in JSON files on the server
+   - For production use, consider implementing database storage
+   - State is loaded on server restart but may be lost if server crashes
+
+6. **Network**:
+   - No offline support or local caching
+   - Requires persistent WebSocket connection
+   - Reconnection may cause brief state sync delays
+
+### Known Bugs
+
+1. **Coordinate Precision**: 
+   - Fixed: Coordinate calculation now uses CSS pixel space with Device Pixel Ratio (DPR) scaling
+   - Coordinates are stored with 4 decimal precision for accuracy
+
+2. **Canvas Resizing**:
+   - Canvas resize during active drawing may cause slight coordinate shifts
+   - Stroke coordinates are captured at stroke start to minimize issues
+
+3. **Browser Compatibility**:
+   - Tested on Chrome, Firefox, Safari, and Edge
+   - Some older browsers may have performance issues
+   - Mobile browsers may have touch event handling differences
+
+## ⏱️ Time Spent on Project
+
+### Development Timeline
+
+- **Core Infrastructure** (~4 hours):
+  - Project setup and scaffolding
+  - Client/server architecture with Socket.IO
+  - Basic WebSocket communication protocol
+  - Room management system
+
+- **Drawing Pipeline** (~6 hours):
+  - Canvas rendering system with HTML5 Canvas API
+  - Brush and eraser tool implementation
+  - Smooth stroke rendering with quadratic curves
+  - Coordinate system with Device Pixel Ratio (DPR) support
+  - Real-time stroke streaming at ~60Hz
+
+- **Collaboration Features** (~4 hours):
+  - Real-time synchronization between clients
+  - Presence indicators and cursor tracking
+  - Conflict resolution with timestamp-based ordering
+  - State synchronization and reconciliation
+
+- **Global Operations** (~2 hours):
+  - Global undo/redo implementation
+  - Global clear functionality
+  - State replacement and convergence
+  - Server-side state management
+
+- **Performance Optimization** (~3 hours):
+  - Offscreen canvas rendering for performance
+  - Render loop optimization (60fps)
+  - Point streaming and throttling
+  - Smooth curve interpolation algorithms
+  - Coordinate system fixes and optimizations
+
+- **UI/UX** (~2 hours):
+  - Modern sidebar interface design
+  - Tool selection and color picker
+  - Live metrics display (latency, FPS)
+  - Debug overlay for render order
+  - Responsive design for mobile devices
+
+- **Deployment & Fixes** (~3 hours):
+  - Render deployment configuration
+  - Vercel deployment setup
+  - Environment variable configuration
+  - Coordinate system debugging and fixes
+  - Build system configuration
+
+- **Documentation** (~1 hour):
+  - README.md documentation
+  - ARCHITECTURE.md documentation
+  - Code comments and explanations
+
+**Total Time: ~25 hours**
+
+### Key Challenges Overcome
+
+1. **Coordinate System**: Spent significant time debugging coordinate calculation issues with high-DPI displays and canvas transforms
+2. **Real-time Sync**: Implemented robust conflict resolution for simultaneous drawing
+3. **Performance**: Optimized rendering pipeline for smooth 60fps drawing
+4. **State Management**: Developed reliable state synchronization between clients and server
 
 ## 🌐 Deployment
 
@@ -118,32 +259,6 @@ Collaborative Canvas/
 └── package.json           # Dependencies and scripts
 ```
 
-## 🛠️ Technical Details
-
-### Architecture
-
-- **Client**: Vanilla TypeScript compiled with esbuild
-- **Server**: Node.js + Express + Socket.IO
-- **Canvas**: HTML5 Canvas API with high-DPI support
-- **Real-time**: WebSocket-based bidirectional communication
-- **Storage**: JSON file-based persistence (can be extended to database)
-
-### Key Features Implementation
-
-- **Coordinate System**: CSS pixel coordinates with Device Pixel Ratio (DPR) scaling for high-DPI displays
-- **Smooth Drawing**: Quadratic curve interpolation for smooth stroke rendering
-- **Conflict Resolution**: Deterministic timestamp-based sorting for consistent rendering order
-- **State Synchronization**: Optimistic local updates with server reconciliation
-- **Performance**: Offscreen canvas rendering with 60fps refresh rate
-
-### Coordinate System Fix
-
-The application uses a precise coordinate calculation system:
-- Coordinates are calculated in CSS pixel space relative to the canvas element
-- Device Pixel Ratio (DPR) is applied via canvas transform for high-DPI displays
-- Transform is correctly handled when blitting offscreen canvas to main canvas
-- Coordinates are stored with 4 decimal precision for accuracy
-
 ## 📝 Scripts
 
 - `npm start` - Start the production server (uses prebuilt bundle)
@@ -170,14 +285,6 @@ The client can connect to different servers:
 2. Build-time injection: Set `SERVER_URL` environment variable during build
 3. Runtime global: Set `window.SERVER_URL` in the HTML
 4. Default: Same origin as the client
-
-## 🐛 Known Limitations
-
-- Global undo/redo is linear and affects the most recent visible operation (no per-user undo)
-- Long sessions can accumulate many strokes; consider implementing compaction
-- Eraser uses `destination-out` blending; subtle differences may appear across browsers
-- No authentication; user identity is ephemeral per session
-- Canvas state is stored in JSON files; for production, consider using a database
 
 ## 🤝 Contributing
 
