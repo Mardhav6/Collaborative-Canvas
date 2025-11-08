@@ -944,19 +944,6 @@ export function createCanvasController(params: {
         console.error(`[canvas] MISMATCH: lockedPoints[0] vs lockedPointsRounded[0]: diff=${diff2.toFixed(4)}`);
       }
       
-      // Visual verification: Draw a red circle at the stored first point AFTER redraw
-      // This helps verify that stored coordinates render correctly
-      setTimeout(() => {
-        const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
-        ctx.save();
-        ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
-        ctx.fillStyle = 'red';
-        ctx.globalAlpha = 0.9;
-        ctx.beginPath();
-        ctx.arc(firstPoint.x, firstPoint.y, 6, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      }, 100);
     }
     
     // CRITICAL: Verify coordinates immediately after storing
