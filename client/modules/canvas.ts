@@ -754,11 +754,12 @@ export function createCanvasController(params: {
     const rect = canvas.getBoundingClientRect();
     strokeStartCanvasSize = { width: rect.width, height: rect.height };
     
-    // DEBUG: Draw a visible red marker at the exact click position to verify coordinates
+    // DEBUG: Test coordinate calculation by drawing markers at multiple positions
     const testPoint = canvasPointFromEvent(e);
+    const rect = canvas.getBoundingClientRect();
     const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
     
-    // Draw on offscreen canvas so marker persists
+    // Draw red marker at calculated position
     octx.save();
     octx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
     octx.fillStyle = 'red';
@@ -766,9 +767,26 @@ export function createCanvasController(params: {
     octx.beginPath();
     octx.arc(testPoint.x, testPoint.y, 25, 0, Math.PI * 2);
     octx.fill();
+    
+    // Draw blue marker at (0,0) - should be top-left
+    octx.fillStyle = 'blue';
+    octx.beginPath();
+    octx.arc(0, 0, 20, 0, Math.PI * 2);
+    octx.fill();
+    
+    // Draw green marker at calculated position using offsetX/offsetY directly
+    const offsetX = (e as any).offsetX;
+    const offsetY = (e as any).offsetY;
+    if (offsetX !== undefined && offsetY !== undefined) {
+      octx.fillStyle = 'lime';
+      octx.globalAlpha = 0.7;
+      octx.beginPath();
+      octx.arc(offsetX, offsetY, 20, 0, Math.PI * 2);
+      octx.fill();
+    }
     octx.restore();
     
-    // Also draw on main canvas for immediate feedback
+    // Also draw on main canvas
     ctx.save();
     ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
     ctx.fillStyle = 'red';
@@ -776,9 +794,24 @@ export function createCanvasController(params: {
     ctx.beginPath();
     ctx.arc(testPoint.x, testPoint.y, 25, 0, Math.PI * 2);
     ctx.fill();
+    ctx.fillStyle = 'blue';
+    ctx.beginPath();
+    ctx.arc(0, 0, 20, 0, Math.PI * 2);
+    ctx.fill();
+    if (offsetX !== undefined && offsetY !== undefined) {
+      ctx.fillStyle = 'lime';
+      ctx.globalAlpha = 0.7;
+      ctx.beginPath();
+      ctx.arc(offsetX, offsetY, 20, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.restore();
     
-    console.log(`[canvas] DEBUG: Click at viewport (${e.clientX.toFixed(1)}, ${e.clientY.toFixed(1)}) -> canvas (${testPoint.x.toFixed(2)}, ${testPoint.y.toFixed(2)})`);
+    console.log(`[canvas] DEBUG: Click at viewport (${e.clientX.toFixed(1)}, ${e.clientY.toFixed(1)})`);
+    console.log(`[canvas] DEBUG: Canvas rect: left=${rect.left.toFixed(1)}, top=${rect.top.toFixed(1)}, width=${rect.width.toFixed(1)}, height=${rect.height.toFixed(1)}`);
+    console.log(`[canvas] DEBUG: Calculated coords: (${testPoint.x.toFixed(2)}, ${testPoint.y.toFixed(2)})`);
+    console.log(`[canvas] DEBUG: offsetX/Y coords: (${offsetX?.toFixed(2) || 'N/A'}, ${offsetY?.toFixed(2) || 'N/A'})`);
+    console.log(`[canvas] DEBUG: Canvas buffer: ${canvas.width}x${canvas.height}, DPR: ${currentDpr}`);
     
     if (now - lastStrokeStartTime < 100 && isPointerDown) {
       return; // Ignore rapid successive starts
