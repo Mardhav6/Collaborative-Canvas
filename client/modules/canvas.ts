@@ -437,9 +437,17 @@ export function createCanvasController(params: {
       }
     }
     
-    // blit
+    // blit offscreen canvas to main canvas
+    // CRITICAL: Reset transform before drawing image (drawImage uses device pixels)
+    // The offscreen canvas is already rendered with the transform, so we draw it at 1:1 scale
+    const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset to identity transform
     clearCanvas(ctx);
-    ctx.drawImage(offscreen, 0, 0);
+    ctx.drawImage(offscreen, 0, 0); // Draw at device pixel size
+    ctx.restore();
+    // Restore DPR transform for future drawing
+    ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
 
     // Note: debug overlay is rendered per-frame in render()
     needsRedraw = false;
