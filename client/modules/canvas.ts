@@ -929,15 +929,21 @@ export function createCanvasController(params: {
       const firstPoint = lockedPointsRounded[0];
       const lastPoint = lockedPointsRounded[lockedPointsRounded.length - 1];
       const originalFirstPoint = activeStroke.points[0];
-      console.log(`[canvas] Committed stroke ${committedStrokeId}:`);
-      console.log(`  - Stored first point: (${firstPoint.x.toFixed(4)}, ${firstPoint.y.toFixed(4)})`);
-      console.log(`  - Original activeStroke.points[0]: (${originalFirstPoint.x}, ${originalFirstPoint.y})`);
+      console.log(`[canvas] Committed stroke ${committedStrokeId.substring(0, 16)}...:`);
+      console.log(`  - activeStroke.points[0] BEFORE commit: (${originalFirstPoint.x.toFixed(4)}, ${originalFirstPoint.y.toFixed(4)})`);
+      console.log(`  - lockedPoints[0] (before rounding): (${lockedPoints[0].x.toFixed(4)}, ${lockedPoints[0].y.toFixed(4)})`);
+      console.log(`  - lockedPointsRounded[0] (after rounding): (${firstPoint.x.toFixed(4)}, ${firstPoint.y.toFixed(4)})`);
+      console.log(`  - Stored in Map: (${firstPoint.x.toFixed(4)}, ${firstPoint.y.toFixed(4)})`);
       console.log(`  - Canvas size: ${commitCanvasWidth.toFixed(2)}x${commitCanvasHeight.toFixed(2)}`);
       
-      // Check if coordinates match
-      const coordDiff = Math.abs(firstPoint.x - originalFirstPoint.x) + Math.abs(firstPoint.y - originalFirstPoint.y);
-      if (coordDiff > 0.1) {
-        console.error(`[canvas] COORDINATE MISMATCH! Stored: (${firstPoint.x.toFixed(4)}, ${firstPoint.y.toFixed(4)}), Original: (${originalFirstPoint.x.toFixed(4)}, ${originalFirstPoint.y.toFixed(4)}), Diff: ${coordDiff.toFixed(4)}`);
+      // Check if coordinates match at each step
+      const diff1 = Math.abs(lockedPoints[0].x - originalFirstPoint.x) + Math.abs(lockedPoints[0].y - originalFirstPoint.y);
+      const diff2 = Math.abs(firstPoint.x - lockedPoints[0].x) + Math.abs(firstPoint.y - lockedPoints[0].y);
+      if (diff1 > 0.01) {
+        console.error(`[canvas] MISMATCH: activeStroke.points[0] vs lockedPoints[0]: diff=${diff1.toFixed(4)}`);
+      }
+      if (diff2 > 0.01) {
+        console.error(`[canvas] MISMATCH: lockedPoints[0] vs lockedPointsRounded[0]: diff=${diff2.toFixed(4)}`);
       }
       
       // Visual verification: Draw a red circle at the stored first point AFTER redraw
