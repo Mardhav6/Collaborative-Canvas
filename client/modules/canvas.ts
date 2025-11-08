@@ -169,9 +169,16 @@ export function createCanvasController(params: {
       const storedSize = committedStrokeCanvasSize.get(s.id);
       const normalizedPoints = committedStrokeNormalizedCoordinates.get(s.id);
       
-      // DEBUG: Always log what we retrieve from Map
+      // DEBUG: Always log what we retrieve from Map - CRITICAL for debugging
       if (storedPoints && storedPoints.length > 0) {
-        console.log(`[canvas] drawStroke for committed stroke ${s.id.substring(0, 16)}: Retrieved from Map: first point (${storedPoints[0].x.toFixed(2)}, ${storedPoints[0].y.toFixed(2)}), stroke object: (${s.points[0]?.x.toFixed(2) || 'N/A'}, ${s.points[0]?.y.toFixed(2) || 'N/A'})`);
+        const mapFirst = storedPoints[0];
+        const strokeFirst = s.points[0];
+        console.log(`[canvas] drawStroke committed ${s.id.substring(0, 12)}: Map(${mapFirst.x.toFixed(1)},${mapFirst.y.toFixed(1)}) vs Stroke(${strokeFirst?.x.toFixed(1) || 'N/A'},${strokeFirst?.y.toFixed(1) || 'N/A'})`);
+        
+        // CRITICAL: If coordinates don't match, this is the problem!
+        if (strokeFirst && (Math.abs(mapFirst.x - strokeFirst.x) > 1 || Math.abs(mapFirst.y - strokeFirst.y) > 1)) {
+          console.error(`[canvas] MISMATCH DETECTED! Stroke ${s.id.substring(0, 12)} coordinates differ by more than 1px!`);
+        }
       } else {
         console.error(`[canvas] ERROR: Committed stroke ${s.id.substring(0, 16)} has NO stored coordinates in Map!`);
       }
