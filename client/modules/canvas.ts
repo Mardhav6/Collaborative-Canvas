@@ -711,21 +711,27 @@ export function createCanvasController(params: {
     // DEBUG: Draw a green marker at the exact capture point IMMEDIATELY
     // This helps verify that coordinates are captured correctly
     const testPoint = canvasPointFromEvent(e);
-    const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
-    ctx.save();
-    ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
-    ctx.fillStyle = 'lime';
-    ctx.globalAlpha = 1.0;
-    ctx.beginPath();
-    ctx.arc(testPoint.x, testPoint.y, 10, 0, Math.PI * 2);
-    ctx.fill();
-    // Draw a smaller black dot in center for precise verification
-    ctx.fillStyle = 'black';
-    ctx.beginPath();
-    ctx.arc(testPoint.x, testPoint.y, 2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-    console.log(`[canvas] DEBUG: Drew GREEN marker at captured point (${testPoint.x.toFixed(2)}, ${testPoint.y.toFixed(2)}) - this should be EXACTLY where you clicked!`);
+    console.log(`[canvas] DEBUG: About to draw GREEN marker at (${testPoint.x.toFixed(2)}, ${testPoint.y.toFixed(2)})`);
+    
+    // Draw marker directly on the canvas without clearing
+    // Use requestAnimationFrame to ensure it's drawn after any pending clears
+    requestAnimationFrame(() => {
+      const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
+      ctx.save();
+      ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
+      ctx.fillStyle = 'lime';
+      ctx.globalAlpha = 1.0;
+      ctx.beginPath();
+      ctx.arc(testPoint.x, testPoint.y, 12, 0, Math.PI * 2);
+      ctx.fill();
+      // Draw a smaller black dot in center for precise verification
+      ctx.fillStyle = 'black';
+      ctx.beginPath();
+      ctx.arc(testPoint.x, testPoint.y, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      console.log(`[canvas] DEBUG: Drew GREEN marker at (${testPoint.x.toFixed(2)}, ${testPoint.y.toFixed(2)}) with transform ${currentDpr}`);
+    });
     
     if (now - lastStrokeStartTime < 100 && isPointerDown) {
       return; // Ignore rapid successive starts
@@ -792,8 +798,11 @@ export function createCanvasController(params: {
     }
 
     isPointerDown = true;
-    try { (e.target as Element).setPointerCapture?.((e as unknown as PointerEvent).pointerId); } catch {}
+    // CRITICAL: Get coordinates BEFORE pointer capture
+    // Pointer capture can change event.target, affecting offsetX/offsetY
     const p = canvasPointFromEvent(e);
+    // Capture pointer AFTER getting coordinates
+    try { (e.target as Element).setPointerCapture?.((e as unknown as PointerEvent).pointerId); } catch {}
     const mode = getTool() === 'eraser' ? 'erase' : 'draw';
     // Add client-side timestamp for conflict resolution
     const clientTimestamp = Date.now();
