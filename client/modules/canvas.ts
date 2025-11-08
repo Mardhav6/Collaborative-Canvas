@@ -104,6 +104,8 @@ export function createCanvasController(params: {
   const committedStrokeCoordinates = new Map<string, Point[]>();
   // Store canvas dimensions at commit time to detect resizing issues
   const committedStrokeCanvasSize = new Map<string, { width: number; height: number }>();
+  // Store normalized coordinates (0-1 range) as backup to handle canvas resizing
+  const committedStrokeNormalizedCoordinates = new Map<string, Point[]>();
 
   const dpr = Math.max(window.devicePixelRatio || 1, 1);
 
@@ -162,7 +164,31 @@ export function createCanvasController(params: {
     // Never trust the stroke object's points - they might have been modified by server
     let pointsToRender: Point[];
     if (locallyCommittedStrokes.has(s.id)) {
-      const storedPoints = committedStrokeCoordinates.get(s.id);
+      // First, try to get stored coordinates
+      let storedPoints = committedStrokeCoordinates.get(s.id);
+      const storedSize = committedStrokeCanvasSize.get(s.id);
+      const normalizedPoints = committedStrokeNormalizedCoordinates.get(s.id);
+      
+      // Check if canvas has resized - if so, recalculate from normalized coordinates
+      if (storedPoints && storedSize && normalizedPoints) {
+        const currentRect = canvas.getBoundingClientRect();
+        const sizeDiff = Math.abs(currentRect.width - storedSize.width) + Math.abs(currentRect.height - storedSize.height);
+        
+        // If canvas resized significantly, recalculate coordinates from normalized values
+        if (sizeDiff > 1 && currentRect.width > 0 && currentRect.height > 0) {
+          console.log(`[canvas] Canvas resized after commit for stroke ${s.id.substring(0, 8)}. Recalculating from normalized coordinates. Old: ${storedSize.width}x${storedSize.height}, New: ${currentRect.width.toFixed(2)}x${currentRect.height.toFixed(2)}`);
+          // Recalculate from normalized coordinates
+          storedPoints = normalizedPoints.map(p => ({
+            x: Number((p.x * currentRect.width).toFixed(4)),
+            y: Number((p.y * currentRect.height).toFixed(4)),
+            t: p.t
+          }));
+          // Update stored coordinates for next render
+          committedStrokeCoordinates.set(s.id, storedPoints);
+          committedStrokeCanvasSize.set(s.id, { width: currentRect.width, height: currentRect.height });
+        }
+      }
+      
       if (storedPoints && storedPoints.length > 0) {
         // Use stored coordinates directly - these are the source of truth
         // Create a fresh array to ensure no reference sharing
@@ -628,17 +654,26 @@ export function createCanvasController(params: {
     
     // Calculate coordinates in CSS pixel space
     // These coordinates are relative to the canvas element's top-left corner
-    // CRITICAL: These are CSS pixel coordinates that work with the canvas transform
-    // The transform scales by DPR, so CSS pixels map directly to the coordinate system
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    // CRITICAL: Use clientX/clientY which are viewport-relative, subtract rect.left/top
+    // to get coordinates relative to canvas element
+    // Account for any scroll offset if canvas is in a scrollable container
+    const scrollX = window.scrollX || 0;
+    const scrollY = window.scrollY || 0;
+    
+    // Calculate raw coordinates
+    const rawX = e.clientX - rect.left;
+    const rawY = e.clientY - rect.top;
+    
+    // Debug: Log coordinate calculation for first few points
+    if (Math.random() < 0.1) { // 10% sampling
+      console.log(`[canvas] Point calculation: clientX=${e.clientX.toFixed(2)}, clientY=${e.clientY.toFixed(2)}, rect.left=${rect.left.toFixed(2)}, rect.top=${rect.top.toFixed(2)}, rect.width=${rect.width.toFixed(2)}, rect.height=${rect.height.toFixed(2)}, calculated x=${rawX.toFixed(2)}, y=${rawY.toFixed(2)}`);
+    }
     
     // Store with sufficient precision to prevent rounding errors
     // Use 4 decimal places for sub-pixel accuracy
-    // Don't clamp - allow coordinates slightly outside bounds for edge cases
     return { 
-      x: Number(x.toFixed(4)), 
-      y: Number(y.toFixed(4)), 
+      x: Number(rawX.toFixed(4)), 
+      y: Number(rawY.toFixed(4)), 
       t: performance.now() 
     };
   }
@@ -655,6 +690,21 @@ export function createCanvasController(params: {
     // This helps detect if canvas resizes during drawing
     const rect = canvas.getBoundingClientRect();
     strokeStartCanvasSize = { width: rect.width, height: rect.height };
+    
+    // DEBUG: Draw a green marker at the exact capture point to verify coordinate accuracy
+    const testPoint = canvasPointFromEvent(e);
+    setTimeout(() => {
+      ctx.save();
+      const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
+      ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
+      ctx.fillStyle = 'lime';
+      ctx.beginPath();
+      ctx.arc(testPoint.x, testPoint.y, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      console.log(`[canvas] DEBUG: Drew green marker at captured point (${testPoint.x.toFixed(2)}, ${testPoint.y.toFixed(2)})`);
+    }, 10);
+    
     if (now - lastStrokeStartTime < 100 && isPointerDown) {
       return; // Ignore rapid successive starts
     }
@@ -831,6 +881,17 @@ export function createCanvasController(params: {
       width: commitCanvasWidth, 
       height: commitCanvasHeight 
     });
+    
+    // ALSO store normalized coordinates (0-1 range) as percentages of canvas size
+    // This allows us to recalculate coordinates if canvas resizes
+    if (commitCanvasWidth > 0 && commitCanvasHeight > 0) {
+      const normalizedPoints = lockedPointsRounded.map(p => ({
+        x: p.x / commitCanvasWidth,
+        y: p.y / commitCanvasHeight,
+        t: p.t
+      }));
+      committedStrokeNormalizedCoordinates.set(committedStrokeId, normalizedPoints);
+    }
     
     // Debug: Log first and last point to verify coordinates are correct
     if (lockedPointsRounded.length > 0) {
