@@ -140,7 +140,7 @@ export function createCanvasController(params: {
     return smoothed;
   }
 
-  function drawStroke(target: CanvasRenderingContext2D, s: StrokeOp) {
+  function drawStroke(target: CanvasRenderingContext2D, s: StrokeOp, applySmoothing = true) {
     if (!s || s.points.length < 1 || s.isDeleted) return;
     
     target.save();
@@ -158,8 +158,8 @@ export function createCanvasController(params: {
     target.beginPath();
     let points = s.points;
     
-    // Apply smoothing for better curve quality
-    if (points.length > 2) {
+    // Apply smoothing for better curve quality (but skip for active strokes during drawing)
+    if (applySmoothing && points.length > 2) {
       points = smoothPoints(points);
     }
     
@@ -177,23 +177,23 @@ export function createCanvasController(params: {
       target.moveTo(points[0].x, points[0].y);
       
       // Use improved curve algorithm for maximum smoothness
+      // For better smoothness, use control points that create continuous curves
       for (let i = 1; i < points.length; i++) {
         const prev = points[i - 1];
         const curr = points[i];
         
         if (i === points.length - 1) {
-          // Last point - smooth curve to it
+          // Last point - smooth curve to it using previous point as control
           target.quadraticCurveTo(prev.x, prev.y, curr.x, curr.y);
         } else {
-          // Middle points - use smooth control points
+          // Middle points - use smooth control points for continuous curves
           const next = points[i + 1];
-          // Calculate smooth control point
-          const cpX = curr.x;
-          const cpY = curr.y;
-          // End point is weighted average for smoother transition
-          const endX = curr.x * 0.7 + next.x * 0.3;
-          const endY = curr.y * 0.7 + next.y * 0.3;
-          target.quadraticCurveTo(cpX, cpY, endX, endY);
+          // Control point is current point, end is smooth interpolation
+          // Use more aggressive smoothing for active strokes (when applySmoothing is false)
+          const smoothFactor = applySmoothing ? 0.5 : 0.6; // More aggressive for real-time
+          const endX = curr.x * (1 - smoothFactor) + next.x * smoothFactor;
+          const endY = curr.y * (1 - smoothFactor) + next.y * smoothFactor;
+          target.quadraticCurveTo(curr.x, curr.y, endX, endY);
         }
       }
       
@@ -746,22 +746,28 @@ export function createCanvasController(params: {
     // Always render drawing layer if we need redraw or are actively drawing
     // Also do periodic full redraws to catch any missed updates (every 100ms)
     const isActivelyDrawing = activeStroke && isPointerDown;
-    const shouldRedraw = needsRedraw || isActivelyDrawing || (now - lastFullRedraw > 100);
     
-    if (shouldRedraw) {
+    // Always render when actively drawing for smooth 60fps
+    if (isActivelyDrawing || needsRedraw || (now - lastFullRedraw > 100)) {
       // Redraw offscreen canvas if strokes changed
-      if (needsRedraw) {
+      if (needsRedraw && !isActivelyDrawing) {
+        // Only full redraw when not actively drawing to avoid flicker
         redrawAll();
         lastFullRedraw = now;
+      } else if (!isActivelyDrawing) {
+        // Just blit existing offscreen when not drawing
+        clearCanvas(ctx);
+        ctx.drawImage(offscreen, 0, 0);
       } else {
-        // Just blit existing offscreen
+        // When actively drawing, blit offscreen first, then draw active stroke
         clearCanvas(ctx);
         ctx.drawImage(offscreen, 0, 0);
       }
       
       // Always render active stroke preview above committed layer when drawing
+      // Skip smoothing for active strokes to avoid fluttering - render raw points with smooth curves
       if (isActivelyDrawing && activeStroke && !activeStroke.isDeleted && activeStroke.points.length > 0) {
-        drawStroke(ctx, activeStroke);
+        drawStroke(ctx, activeStroke, false); // No smoothing for active stroke - smoother real-time
       }
       if (activeShape) {
         drawShape(ctx, activeShape);
