@@ -655,21 +655,47 @@ export function createCanvasController(params: {
     const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
     ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
     
-    // CRITICAL: Always use getBoundingClientRect() for accurate coordinates
-    // This works correctly even with pointer capture, transforms, or nested elements
-    // clientX/clientY are always relative to the viewport
-    const rect = canvas.getBoundingClientRect();
+    // CRITICAL: Try multiple methods to get accurate coordinates
+    // Priority: offsetX/offsetY (most accurate) > getBoundingClientRect() > layerX/layerY
+    let x: number;
+    let y: number;
     
-    // Calculate coordinates relative to canvas element's top-left corner
-    // This is the most reliable method that works in all scenarios
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    // Method 1: Try offsetX/offsetY first (most reliable when event target is canvas)
+    if ((e as any).offsetX !== undefined && (e as any).offsetY !== undefined && !isNaN((e as any).offsetX) && !isNaN((e as any).offsetY)) {
+      x = (e as any).offsetX;
+      y = (e as any).offsetY;
+    } else {
+      // Method 2: Calculate from getBoundingClientRect()
+      const rect = canvas.getBoundingClientRect();
+      x = e.clientX - rect.left;
+      y = e.clientY - rect.top;
+      
+      // Account for scroll position if needed
+      x += window.scrollX || 0;
+      y += window.scrollY || 0;
+      
+      // Subtract scroll again if canvas is in a scrollable container
+      const canvasRect = canvas.getBoundingClientRect();
+      const stage = canvas.parentElement;
+      if (stage) {
+        const stageRect = stage.getBoundingClientRect();
+        x = e.clientX - stageRect.left;
+        y = e.clientY - stageRect.top;
+      }
+    }
     
-    // Debug: Log coordinates for first few events to verify accuracy
-    if (Math.random() < 0.02) { // 2% sampling to avoid spam
+    // Debug: Always log first few coordinates to diagnose
+    if (Math.random() < 0.1) {
+      const rect = canvas.getBoundingClientRect();
       const offsetX = (e as any).offsetX;
       const offsetY = (e as any).offsetY;
-      console.log(`[canvas] Coordinate capture: clientX=${e.clientX.toFixed(1)}, clientY=${e.clientY.toFixed(1)}, rect.left=${rect.left.toFixed(1)}, rect.top=${rect.top.toFixed(1)}, calculated x=${x.toFixed(2)}, y=${y.toFixed(2)}${offsetX !== undefined ? `, offsetX=${offsetX.toFixed(2)}, offsetY=${offsetY.toFixed(2)}` : ''}`);
+      console.log(`[canvas] Coordinate capture DEBUG:`);
+      console.log(`  - clientX=${e.clientX.toFixed(1)}, clientY=${e.clientY.toFixed(1)}`);
+      console.log(`  - rect.left=${rect.left.toFixed(1)}, rect.top=${rect.top.toFixed(1)}, rect.width=${rect.width.toFixed(1)}, rect.height=${rect.height.toFixed(1)}`);
+      console.log(`  - offsetX=${offsetX !== undefined ? offsetX.toFixed(2) : 'N/A'}, offsetY=${offsetY !== undefined ? offsetY.toFixed(2) : 'N/A'}`);
+      console.log(`  - FINAL calculated: x=${x.toFixed(2)}, y=${y.toFixed(2)}`);
+      console.log(`  - canvas.width=${canvas.width}, canvas.height=${canvas.height}`);
+      console.log(`  - canvas.style.width=${canvas.style.width}, canvas.style.height=${canvas.style.height}`);
     }
     
     // Store with sufficient precision to prevent rounding errors
