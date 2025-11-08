@@ -290,9 +290,10 @@ export function createCanvasController(params: {
     });
     
     // Draw ops in sorted order
+    // Always apply smoothing to all committed strokes for smooth rendering
     for (const s of sortedOps) {
       if ((s as any).type === 'stroke') {
-        if (!(s as any).isDeleted) drawStroke(octx, s as StrokeOp);
+        if (!(s as any).isDeleted) drawStroke(octx, s as StrokeOp, true); // Always smooth committed strokes
       } else {
         drawShape(octx, s as any);
       }
@@ -330,22 +331,28 @@ export function createCanvasController(params: {
     const stroke = s as StrokeOp;
     const existing = strokes.find(existing => existing.id === stroke.id);
     
-    // If this is our active stroke, DON'T add it to strokes array yet
-    // It will be added when the stroke ends to avoid duplicate rendering
-    if (activeStroke && activeStroke.id === stroke.id) {
-      // Just sync metadata, but don't add to strokes array
-      // The active stroke is rendered separately in the render loop
+    // If this is our active stroke, IGNORE server updates completely while drawing
+    // This prevents server sync from interfering with smooth local rendering
+    if (activeStroke && activeStroke.id === stroke.id && isPointerDown) {
+      // Completely ignore server updates for active strokes while drawing
+      // This keeps the smooth local rendering uninterrupted
+      return;
+    }
+    
+    // If this was our active stroke but we're done drawing, add it now
+    if (activeStroke && activeStroke.id === stroke.id && !isPointerDown) {
+      // Stroke is done, but make sure we use the local version which has more points
+      // Only sync metadata, keep local points for smoothness
       activeStroke.color = stroke.color;
       activeStroke.width = stroke.width;
       activeStroke.mode = stroke.mode;
-      // Preserve server timestamp if provided
       if ((stroke as any).timestamp) {
         activeStroke.timestamp = (stroke as any).timestamp;
       }
       if ((stroke as any).serverTimestamp) {
         (activeStroke as any).serverTimestamp = (stroke as any).serverTimestamp;
       }
-      // Don't add to strokes array - it's still active and rendered separately
+      // Don't add to strokes array yet - it will be added in endStroke
       return;
     }
     
@@ -362,25 +369,43 @@ export function createCanvasController(params: {
         if (aServerTime !== bServerTime) return aServerTime - bServerTime;
         return a.userId.localeCompare(b.userId);
       });
-      // Full redraw to maintain sorted order
-      redrawAll();
+      // Only redraw if not actively drawing to avoid interference
+      if (!isPointerDown) {
+        redrawAll();
+      } else {
+        needsRedraw = true;
+      }
     }
   });
 
   network.onStrokePatched(({ id, points }) => {
-    // Update active stroke if it matches
-    if (activeStroke && activeStroke.id === id) {
-      activeStroke.points = points as Point[];
-      // Update the stroke in array too
-      const s = strokes.find(x => x.id === id);
-      if (s) {
-        s.points = points as Point[];
-      }
-      needsRedraw = true; // Always redraw for active stroke
+    // IGNORE server patches for active strokes while drawing
+    // This prevents server updates from interfering with smooth local rendering
+    if (activeStroke && activeStroke.id === id && isPointerDown) {
+      // Completely ignore server patches while actively drawing
+      // Local rendering is smoother with all points captured
       return;
     }
     
-    // Update other strokes
+    // Update active stroke if it matches (but only if not actively drawing)
+    if (activeStroke && activeStroke.id === id && !isPointerDown) {
+      // Don't overwrite local points - they're smoother
+      // Only update if server has more points (shouldn't happen, but just in case)
+      if (points.length > activeStroke.points.length) {
+        activeStroke.points = points as Point[];
+      }
+      // Update the stroke in array too
+      const s = strokes.find(x => x.id === id);
+      if (s) {
+        if (points.length > s.points.length) {
+          s.points = points as Point[];
+        }
+      }
+      needsRedraw = true;
+      return;
+    }
+    
+    // Update other users' strokes
     const s = strokes.find(x => x.id === id);
     if (!s) {
       // Stroke not found - might be from another user who started before we joined
@@ -391,9 +416,11 @@ export function createCanvasController(params: {
     }
     const oldLength = s.points.length;
     s.points = points as Point[];
-    // Only redraw if points actually changed
-    if (s.points.length !== oldLength || needsRedraw) {
-      needsRedraw = true;
+    // Only redraw if points actually changed and not actively drawing
+    if (s.points.length !== oldLength) {
+      if (!isPointerDown) {
+        needsRedraw = true;
+      }
     }
   });
 
