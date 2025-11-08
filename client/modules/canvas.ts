@@ -653,30 +653,37 @@ export function createCanvasController(params: {
   function canvasPointFromEvent(e: PointerEvent): Point {
     // Ensure transform is correct - always use current DPR
     const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
-    
-    // CRITICAL: Always use getBoundingClientRect() method for consistency
-    // offsetX/offsetY can be unreliable in some browsers, especially with pointer events
-    // getBoundingClientRect() is the most reliable way to get element-relative coordinates
-    const rect = canvas.getBoundingClientRect();
-    
-    // Calculate coordinates relative to canvas element
-    // clientX/clientY are viewport coordinates, subtract element's position to get element-relative
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
-    // CRITICAL: Ensure the transform matches what we'll use for rendering
-    // Set transform on both contexts to ensure consistency
     ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
     
-    // Debug: Compare offsetX/offsetY with calculated values
-    if (Math.random() < 0.1 && (e as any).offsetX !== undefined) {
-      const offsetX = (e as any).offsetX;
-      const offsetY = (e as any).offsetY;
-      const diffX = Math.abs(x - offsetX);
-      const diffY = Math.abs(y - offsetY);
-      if (diffX > 1 || diffY > 1) {
-        console.warn(`[canvas] Coordinate mismatch! Calculated: (${x.toFixed(2)}, ${y.toFixed(2)}), offsetX/Y: (${offsetX.toFixed(2)}, ${offsetY.toFixed(2)}), diff: (${diffX.toFixed(2)}, ${diffY.toFixed(2)})`);
+    // CRITICAL: Use the event's target to get accurate coordinates
+    // If the event target is the canvas, use offsetX/offsetY directly
+    // Otherwise, calculate from getBoundingClientRect()
+    let x: number;
+    let y: number;
+    
+    const target = e.target as HTMLElement;
+    if (target === canvas && (e as any).offsetX !== undefined && (e as any).offsetY !== undefined) {
+      // Direct offset from canvas element - most accurate when target is canvas
+      x = (e as any).offsetX;
+      y = (e as any).offsetY;
+    } else {
+      // Fallback: calculate from bounding rect
+      // This accounts for any container positioning or transforms
+      const rect = canvas.getBoundingClientRect();
+      x = e.clientX - rect.left;
+      y = e.clientY - rect.top;
+      
+      // Also try layerX/layerY as fallback (older browsers)
+      if (isNaN(x) || isNaN(y)) {
+        x = (e as any).layerX || 0;
+        y = (e as any).layerY || 0;
       }
+    }
+    
+    // Validate coordinates are reasonable
+    const rect = canvas.getBoundingClientRect();
+    if (x < 0 || x > rect.width || y < 0 || y > rect.height) {
+      console.warn(`[canvas] Coordinates out of bounds: (${x.toFixed(2)}, ${y.toFixed(2)}), canvas size: ${rect.width.toFixed(2)}x${rect.height.toFixed(2)}`);
     }
     
     // Store with sufficient precision to prevent rounding errors
