@@ -818,12 +818,33 @@ export function createCanvasController(params: {
       ctx.fill();
       ctx.restore();
       
-      console.log(`[canvas] DEBUG: Drew RED/YELLOW at CALCULATED (${testPoint.x.toFixed(2)}, ${testPoint.y.toFixed(2)})`);
-      console.log(`[canvas] DEBUG: Drew LIME at offsetX/Y (${offsetX.toFixed(2)}, ${offsetY.toFixed(2)})`);
-      console.log(`[canvas] DEBUG: Difference: (${Math.abs(testPoint.x - offsetX).toFixed(2)}, ${Math.abs(testPoint.y - offsetY).toFixed(2)})`);
+    console.log(`[canvas] DEBUG: Drew RED/YELLOW at CALCULATED (${testPoint.x.toFixed(2)}, ${testPoint.y.toFixed(2)})`);
+    console.log(`[canvas] DEBUG: Drew LIME at offsetX/Y (${offsetX.toFixed(2)}, ${offsetY.toFixed(2)})`);
+    console.log(`[canvas] DEBUG: Difference: (${Math.abs(testPoint.x - offsetX).toFixed(2)}, ${Math.abs(testPoint.y - offsetY).toFixed(2)})`);
     } else {
       console.log(`[canvas] DEBUG: offsetX/offsetY not available, only drew RED/YELLOW at (${testPoint.x.toFixed(2)}, ${testPoint.y.toFixed(2)})`);
     }
+    
+    // ALSO draw a marker at (0,0) to verify coordinate system origin
+    octx.save();
+    octx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
+    octx.fillStyle = 'blue';
+    octx.globalAlpha = 0.7;
+    octx.beginPath();
+    octx.arc(0, 0, 25, 0, Math.PI * 2);
+    octx.fill();
+    octx.restore();
+    
+    ctx.save();
+    ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
+    ctx.fillStyle = 'blue';
+    ctx.globalAlpha = 0.7;
+    ctx.beginPath();
+    ctx.arc(0, 0, 25, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    console.log(`[canvas] DEBUG: Drew BLUE marker at ORIGIN (0, 0) - should be at top-left corner of canvas`);
+    
     needsRedraw = true; // Trigger redraw to show marker
     
     if (now - lastStrokeStartTime < 100 && isPointerDown) {
