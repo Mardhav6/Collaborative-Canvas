@@ -114,7 +114,7 @@ export function createCanvasController(params: {
     target.clearRect(0, 0, canvas.width, canvas.height);
   }
 
-  // Smooth points using moving average for better curve quality
+  // Simple but effective smoothing using running average
   function smoothPoints(points: Point[]): Point[] {
     if (points.length <= 2) return points;
     
@@ -125,9 +125,9 @@ export function createCanvasController(params: {
       const curr = points[i];
       const next = points[i + 1];
       
-      // Weighted average: more weight on current point, less on neighbors
-      const smoothedX = prev.x * 0.25 + curr.x * 0.5 + next.x * 0.25;
-      const smoothedY = prev.y * 0.25 + curr.y * 0.5 + next.y * 0.25;
+      // Simple average for smoother curves
+      const smoothedX = (prev.x + curr.x + next.x) / 3;
+      const smoothedY = (prev.y + curr.y + next.y) / 3;
       
       smoothed.push({
         x: smoothedX,
@@ -173,48 +173,25 @@ export function createCanvasController(params: {
       target.lineTo(points[1].x, points[1].y);
       target.stroke();
     } else {
-      // Multiple points - use smooth continuous curves with proper control points
+      // Multiple points - use simple smooth quadratic curves
+      // This is a proven technique used in many drawing apps
       target.moveTo(points[0].x, points[0].y);
       
-      // For 3 points, use simple quadratic curve
-      if (points.length === 3) {
-        const cpX = points[1].x;
-        const cpY = points[1].y;
-        target.quadraticCurveTo(cpX, cpY, points[2].x, points[2].y);
-      } else {
-        // For 4+ points, use smooth bezier curves with proper control points
-        for (let i = 0; i < points.length - 1; i++) {
-          const curr = points[i];
+      for (let i = 1; i < points.length; i++) {
+        const prev = points[i - 1];
+        const curr = points[i];
+        
+        if (i === points.length - 1) {
+          // Last point - draw directly to it
+          target.lineTo(curr.x, curr.y);
+        } else {
+          // Middle points - use smooth quadratic curves
           const next = points[i + 1];
-          
-          if (i === 0) {
-            // First segment - smooth start
-            const cpX = curr.x + (next.x - curr.x) * 0.5;
-            const cpY = curr.y + (next.y - curr.y) * 0.5;
-            target.quadraticCurveTo(cpX, cpY, next.x, next.y);
-          } else if (i === points.length - 2) {
-            // Last segment - smooth end
-            const prev = points[i - 1];
-            const cpX = curr.x + (next.x - prev.x) * 0.3;
-            const cpY = curr.y + (next.y - prev.y) * 0.3;
-            target.quadraticCurveTo(cpX, cpY, next.x, next.y);
-          } else {
-            // Middle segments - use cubic bezier for smooth continuous curves
-            const prev = points[i - 1];
-            const after = i + 2 < points.length ? points[i + 2] : next;
-            
-            // Calculate smooth control points for continuous curves
-            // Control point 1: smooth transition from previous segment
-            const cp1x = curr.x + (next.x - prev.x) * 0.3;
-            const cp1y = curr.y + (next.y - prev.y) * 0.3;
-            
-            // Control point 2: smooth transition to next segment
-            const cp2x = next.x - (after.x - curr.x) * 0.3;
-            const cp2y = next.y - (after.y - curr.y) * 0.3;
-            
-            // Use cubic bezier for smoother continuous curves
-            target.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, next.x, next.y);
-          }
+          // Control point is the current point
+          // End point is midpoint between current and next for smooth transition
+          const endX = (curr.x + next.x) / 2;
+          const endY = (curr.y + next.y) / 2;
+          target.quadraticCurveTo(curr.x, curr.y, endX, endY);
         }
       }
       
@@ -543,21 +520,22 @@ export function createCanvasController(params: {
 
   let lastSentAt = 0;
   const THROTTLE_MS = 8; // ~120Hz for smoother updates
-  const MIN_DISTANCE = 1; // Reduced minimum distance for smoother capture
+  const MIN_DISTANCE = 0.5; // Very small threshold - capture almost all points for smoothness
   
   function moveStroke(e: PointerEvent) {
     if (!isPointerDown || !activeStroke) return;
     const p = canvasPointFromEvent(e);
     
-    // Always add points for maximum smoothness - filtering happens in smoothing function
+    // Add point if it's far enough, or if we have very few points
     const lastPoint = activeStroke.points[activeStroke.points.length - 1];
     if (lastPoint) {
       const dx = p.x - lastPoint.x;
       const dy = p.y - lastPoint.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
       
-      // Only filter extremely close points to reduce noise
-      if (distance < MIN_DISTANCE && activeStroke.points.length > 1) {
+      // Only filter extremely close points (less than 0.5px) to reduce noise
+      // But always add if we have fewer than 3 points to ensure smooth start
+      if (distance < MIN_DISTANCE && activeStroke.points.length >= 3) {
         // Update the last point's time but keep position
         lastPoint.t = p.t;
         needsRedraw = true;
@@ -786,9 +764,14 @@ export function createCanvasController(params: {
       }
       
       // Always render active stroke preview above committed layer when drawing
-      // Skip smoothing for active strokes to avoid fluttering - render raw points with smooth curves
+      // Apply light smoothing for active strokes for smooth curves
       if (isActivelyDrawing && activeStroke && !activeStroke.isDeleted && activeStroke.points.length > 0) {
-        drawStroke(ctx, activeStroke, false); // No smoothing for active stroke - smoother real-time
+        // For active strokes with many points, apply smoothing for better curves
+        if (activeStroke.points.length > 3) {
+          drawStroke(ctx, activeStroke, true); // Apply smoothing for smooth curves
+        } else {
+          drawStroke(ctx, activeStroke, false); // No smoothing for very short strokes
+        }
       }
       if (activeShape) {
         drawShape(ctx, activeShape);
