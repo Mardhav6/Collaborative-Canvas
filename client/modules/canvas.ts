@@ -759,36 +759,67 @@ export function createCanvasController(params: {
     console.log(`  - Click position: clientX=${e.clientX.toFixed(1)}, clientY=${e.clientY.toFixed(1)}`);
     console.log(`  - Canvas rect: left=${rect.left.toFixed(1)}, top=${rect.top.toFixed(1)}`);
     
-    // Draw marker DIRECTLY on offscreen canvas so it persists through redraws
-    // This ensures the marker is drawn at the exact coordinates we captured
+    // Draw a VERY LARGE, OBVIOUS marker at the exact click position
+    // This helps verify if coordinates are correct or if there's a rendering issue
     const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
+    
+    // Draw on offscreen canvas (persists through redraws)
     octx.save();
     octx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
-    octx.fillStyle = 'lime';
-    octx.globalAlpha = 0.9;
+    // Large bright red circle - impossible to miss
+    octx.fillStyle = 'red';
+    octx.globalAlpha = 0.8;
     octx.beginPath();
-    octx.arc(testPoint.x, testPoint.y, 15, 0, Math.PI * 2);
+    octx.arc(testPoint.x, testPoint.y, 30, 0, Math.PI * 2);
     octx.fill();
-    // Draw a smaller black dot in center for precise verification
-    octx.fillStyle = 'black';
+    // Bright yellow center
+    octx.fillStyle = 'yellow';
     octx.beginPath();
-    octx.arc(testPoint.x, testPoint.y, 4, 0, Math.PI * 2);
+    octx.arc(testPoint.x, testPoint.y, 10, 0, Math.PI * 2);
     octx.fill();
     octx.restore();
     
     // Also draw on main canvas for immediate visual feedback
     ctx.save();
     ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
-    ctx.fillStyle = 'lime';
-    ctx.globalAlpha = 0.9;
+    // Large bright red circle
+    ctx.fillStyle = 'red';
+    ctx.globalAlpha = 0.8;
     ctx.beginPath();
-    ctx.arc(testPoint.x, testPoint.y, 15, 0, Math.PI * 2);
+    ctx.arc(testPoint.x, testPoint.y, 30, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = 'black';
+    // Bright yellow center
+    ctx.fillStyle = 'yellow';
     ctx.beginPath();
-    ctx.arc(testPoint.x, testPoint.y, 4, 0, Math.PI * 2);
+    ctx.arc(testPoint.x, testPoint.y, 10, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
+    
+    // ALSO draw a green marker at the ORIGINAL click position (before any calculation)
+    // This is a sanity check - if green appears where you clicked, coordinates are wrong
+    // If red/yellow appears where you clicked, coordinates are correct
+    const rawX = e.clientX - rect.left;
+    const rawY = e.clientY - rect.top;
+    octx.save();
+    octx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
+    octx.fillStyle = 'lime';
+    octx.globalAlpha = 0.6;
+    octx.beginPath();
+    octx.arc(rawX, rawY, 20, 0, Math.PI * 2);
+    octx.fill();
+    octx.restore();
+    
+    ctx.save();
+    ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
+    ctx.fillStyle = 'lime';
+    ctx.globalAlpha = 0.6;
+    ctx.beginPath();
+    ctx.arc(rawX, rawY, 20, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    
+    console.log(`[canvas] DEBUG: Drew RED/YELLOW marker at CALCULATED (${testPoint.x.toFixed(2)}, ${testPoint.y.toFixed(2)})`);
+    console.log(`[canvas] DEBUG: Drew LIME marker at RAW (${rawX.toFixed(2)}, ${rawY.toFixed(2)})`);
     
     console.log(`[canvas] DEBUG: Drew GREEN marker at (${testPoint.x.toFixed(2)}, ${testPoint.y.toFixed(2)}) with DPR ${currentDpr}`);
     needsRedraw = true; // Trigger redraw to show marker
