@@ -2,6 +2,12 @@
 
 A real-time collaborative drawing canvas built with vanilla TypeScript/JavaScript, HTML5 Canvas, Node.js, and Socket.IO. Multiple users can draw together simultaneously with real-time synchronization, presence cursors, and global undo/redo functionality.
 
+## 🌐 Live Demo
+
+**🚀 [Try it live here!](https://flam-collaborative-canvas-plum.vercel.app/)**
+
+The application is deployed and ready to use. Open the link in multiple browser windows to test real-time collaboration!
+
 ## ✨ Features
 
 - **Real-time Collaboration**: Multiple users can draw simultaneously with instant synchronization
@@ -203,6 +209,12 @@ Testing with multiple users is straightforward:
 4. **State Management**: Developed reliable state synchronization between clients and server
 
 ## 🌐 Deployment
+
+### Live Application
+
+**🔗 [Live Demo: https://flam-collaborative-canvas-plum.vercel.app/](https://flam-collaborative-canvas-plum.vercel.app/)**
+
+The application is currently deployed and accessible at the above link. The frontend is hosted on Vercel and the backend is hosted on Render.
 
 ### Backend (Render)
 
