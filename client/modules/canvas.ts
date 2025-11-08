@@ -646,31 +646,30 @@ export function createCanvasController(params: {
   function canvasPointFromEvent(e: PointerEvent): Point {
     // Ensure transform is correct - always use current DPR
     const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
-    ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
     
-    // CRITICAL: Use offsetX/offsetY which are directly relative to the target element
-    // This is more reliable than calculating from clientX/clientY and getBoundingClientRect()
-    // offsetX/offsetY automatically account for element position, padding, borders, etc.
-    let x: number;
-    let y: number;
-    
-    if (e.offsetX !== undefined && e.offsetY !== undefined) {
-      // Use offsetX/offsetY if available (most reliable)
-      x = e.offsetX;
-      y = e.offsetY;
-    } else {
-      // Fallback to getBoundingClientRect calculation
-      const rect = canvas.getBoundingClientRect();
-      x = e.clientX - rect.left;
-      y = e.clientY - rect.top;
-    }
-    
-    // Get canvas CSS size for validation
+    // CRITICAL: Always use getBoundingClientRect() method for consistency
+    // offsetX/offsetY can be unreliable in some browsers, especially with pointer events
+    // getBoundingClientRect() is the most reliable way to get element-relative coordinates
     const rect = canvas.getBoundingClientRect();
     
-    // Debug: Log coordinate calculation for first few points
-    if (Math.random() < 0.05) { // 5% sampling
-      console.log(`[canvas] Point calculation: offsetX=${(e as any).offsetX?.toFixed(2) || 'N/A'}, offsetY=${(e as any).offsetY?.toFixed(2) || 'N/A'}, clientX=${e.clientX.toFixed(2)}, clientY=${e.clientY.toFixed(2)}, rect.width=${rect.width.toFixed(2)}, rect.height=${rect.height.toFixed(2)}, calculated x=${x.toFixed(2)}, y=${y.toFixed(2)}`);
+    // Calculate coordinates relative to canvas element
+    // clientX/clientY are viewport coordinates, subtract element's position to get element-relative
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    // CRITICAL: Ensure the transform matches what we'll use for rendering
+    // Set transform on both contexts to ensure consistency
+    ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
+    
+    // Debug: Compare offsetX/offsetY with calculated values
+    if (Math.random() < 0.1 && (e as any).offsetX !== undefined) {
+      const offsetX = (e as any).offsetX;
+      const offsetY = (e as any).offsetY;
+      const diffX = Math.abs(x - offsetX);
+      const diffY = Math.abs(y - offsetY);
+      if (diffX > 1 || diffY > 1) {
+        console.warn(`[canvas] Coordinate mismatch! Calculated: (${x.toFixed(2)}, ${y.toFixed(2)}), offsetX/Y: (${offsetX.toFixed(2)}, ${offsetY.toFixed(2)}), diff: (${diffX.toFixed(2)}, ${diffY.toFixed(2)})`);
+      }
     }
     
     // Store with sufficient precision to prevent rounding errors
@@ -697,17 +696,19 @@ export function createCanvasController(params: {
     
     // DEBUG: Draw a green marker at the exact capture point to verify coordinate accuracy
     const testPoint = canvasPointFromEvent(e);
-    setTimeout(() => {
-      ctx.save();
+    // Draw marker immediately to verify coordinate capture
+    requestAnimationFrame(() => {
       const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
+      ctx.save();
       ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
       ctx.fillStyle = 'lime';
+      ctx.globalAlpha = 0.8;
       ctx.beginPath();
-      ctx.arc(testPoint.x, testPoint.y, 5, 0, Math.PI * 2);
+      ctx.arc(testPoint.x, testPoint.y, 8, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
       console.log(`[canvas] DEBUG: Drew green marker at captured point (${testPoint.x.toFixed(2)}, ${testPoint.y.toFixed(2)})`);
-    }, 10);
+    });
     
     if (now - lastStrokeStartTime < 100 && isPointerDown) {
       return; // Ignore rapid successive starts
@@ -901,23 +902,32 @@ export function createCanvasController(params: {
     if (lockedPointsRounded.length > 0) {
       const firstPoint = lockedPointsRounded[0];
       const lastPoint = lockedPointsRounded[lockedPointsRounded.length - 1];
-      console.log(`[canvas] Committed stroke ${committedStrokeId}: first point (${firstPoint.x.toFixed(4)}, ${firstPoint.y.toFixed(4)}), last point (${lastPoint.x.toFixed(4)}, ${lastPoint.y.toFixed(4)}), canvas: ${commitCanvasWidth.toFixed(2)}x${commitCanvasHeight.toFixed(2)}`);
-      console.log(`[canvas] Original activeStroke.points[0]: (${activeStroke.points[0].x}, ${activeStroke.points[0].y})`);
+      const originalFirstPoint = activeStroke.points[0];
+      console.log(`[canvas] Committed stroke ${committedStrokeId}:`);
+      console.log(`  - Stored first point: (${firstPoint.x.toFixed(4)}, ${firstPoint.y.toFixed(4)})`);
+      console.log(`  - Original activeStroke.points[0]: (${originalFirstPoint.x}, ${originalFirstPoint.y})`);
+      console.log(`  - Canvas size: ${commitCanvasWidth.toFixed(2)}x${commitCanvasHeight.toFixed(2)}`);
       
-      // Visual verification: Draw a small red circle at the stored first point
-      // This helps verify that coordinates are being rendered correctly
+      // Check if coordinates match
+      const coordDiff = Math.abs(firstPoint.x - originalFirstPoint.x) + Math.abs(firstPoint.y - originalFirstPoint.y);
+      if (coordDiff > 0.1) {
+        console.error(`[canvas] COORDINATE MISMATCH! Stored: (${firstPoint.x.toFixed(4)}, ${firstPoint.y.toFixed(4)}), Original: (${originalFirstPoint.x.toFixed(4)}, ${originalFirstPoint.y.toFixed(4)}), Diff: ${coordDiff.toFixed(4)}`);
+      }
+      
+      // Visual verification: Draw a red circle at the stored first point AFTER redraw
+      // This helps verify that stored coordinates render correctly
       setTimeout(() => {
-        ctx.save();
-        ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform temporarily
         const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
+        ctx.save();
         ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
         ctx.fillStyle = 'red';
+        ctx.globalAlpha = 0.9;
         ctx.beginPath();
-        ctx.arc(firstPoint.x, firstPoint.y, 3, 0, Math.PI * 2);
+        ctx.arc(firstPoint.x, firstPoint.y, 6, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
-        console.log(`[canvas] Drew verification marker at stored first point (${firstPoint.x.toFixed(2)}, ${firstPoint.y.toFixed(2)})`);
-      }, 50);
+        console.log(`[canvas] Drew RED marker at STORED first point (${firstPoint.x.toFixed(2)}, ${firstPoint.y.toFixed(2)}) - this should match where stroke starts`);
+      }, 100);
     }
     
     // CRITICAL: Verify coordinates immediately after storing
@@ -999,6 +1009,17 @@ export function createCanvasController(params: {
       if (stored) {
         strokes[afterSortIndex].points = stored.map(p => ({ x: p.x, y: p.y, t: p.t }));
         console.log(`[canvas] Restored coordinates for stroke ${committedStrokeId} after sorting at index ${afterSortIndex}`);
+      }
+    }
+    
+    // CRITICAL: Before redrawing, verify the stroke object has correct coordinates
+    const verifyStroke = strokes.find(s => s.id === committedStrokeId);
+    if (verifyStroke && lockedPointsRounded.length > 0) {
+      const storedFirst = lockedPointsRounded[0];
+      const strokeFirst = verifyStroke.points[0];
+      if (strokeFirst && (Math.abs(strokeFirst.x - storedFirst.x) > 0.01 || Math.abs(strokeFirst.y - storedFirst.y) > 0.01)) {
+        console.warn(`[canvas] Stroke object coordinates don't match stored coordinates before redraw! Fixing...`);
+        verifyStroke.points = lockedPointsRounded.map(p => ({ x: p.x, y: p.y, t: p.t }));
       }
     }
     
