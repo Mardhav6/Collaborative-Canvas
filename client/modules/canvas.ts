@@ -655,35 +655,21 @@ export function createCanvasController(params: {
     const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
     ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
     
-    // CRITICAL: Use the event's target to get accurate coordinates
-    // If the event target is the canvas, use offsetX/offsetY directly
-    // Otherwise, calculate from getBoundingClientRect()
-    let x: number;
-    let y: number;
-    
-    const target = e.target as HTMLElement;
-    if (target === canvas && (e as any).offsetX !== undefined && (e as any).offsetY !== undefined) {
-      // Direct offset from canvas element - most accurate when target is canvas
-      x = (e as any).offsetX;
-      y = (e as any).offsetY;
-    } else {
-      // Fallback: calculate from bounding rect
-      // This accounts for any container positioning or transforms
-      const rect = canvas.getBoundingClientRect();
-      x = e.clientX - rect.left;
-      y = e.clientY - rect.top;
-      
-      // Also try layerX/layerY as fallback (older browsers)
-      if (isNaN(x) || isNaN(y)) {
-        x = (e as any).layerX || 0;
-        y = (e as any).layerY || 0;
-      }
-    }
-    
-    // Validate coordinates are reasonable
+    // CRITICAL: Always use getBoundingClientRect() for accurate coordinates
+    // This works correctly even with pointer capture, transforms, or nested elements
+    // clientX/clientY are always relative to the viewport
     const rect = canvas.getBoundingClientRect();
-    if (x < 0 || x > rect.width || y < 0 || y > rect.height) {
-      console.warn(`[canvas] Coordinates out of bounds: (${x.toFixed(2)}, ${y.toFixed(2)}), canvas size: ${rect.width.toFixed(2)}x${rect.height.toFixed(2)}`);
+    
+    // Calculate coordinates relative to canvas element's top-left corner
+    // This is the most reliable method that works in all scenarios
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    // Debug: Log coordinates for first few events to verify accuracy
+    if (Math.random() < 0.02) { // 2% sampling to avoid spam
+      const offsetX = (e as any).offsetX;
+      const offsetY = (e as any).offsetY;
+      console.log(`[canvas] Coordinate capture: clientX=${e.clientX.toFixed(1)}, clientY=${e.clientY.toFixed(1)}, rect.left=${rect.left.toFixed(1)}, rect.top=${rect.top.toFixed(1)}, calculated x=${x.toFixed(2)}, y=${y.toFixed(2)}${offsetX !== undefined ? `, offsetX=${offsetX.toFixed(2)}, offsetY=${offsetY.toFixed(2)}` : ''}`);
     }
     
     // Store with sufficient precision to prevent rounding errors
