@@ -756,7 +756,6 @@ export function createCanvasController(params: {
     
     // DEBUG: Test coordinate calculation by drawing markers at multiple positions
     const testPoint = canvasPointFromEvent(e);
-    const rect = canvas.getBoundingClientRect();
     const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
     
     // Draw red marker at calculated position
