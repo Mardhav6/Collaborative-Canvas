@@ -154,6 +154,17 @@ export function createCanvasController(params: {
   function drawStroke(target: CanvasRenderingContext2D, s: StrokeOp, applySmoothing = true) {
     if (!s || s.points.length < 1 || s.isDeleted) return;
     
+    // CRITICAL: For committed strokes, restore coordinates from Map BEFORE rendering
+    // This ensures the stroke object always has the correct coordinates
+    if (locallyCommittedStrokes.has(s.id)) {
+      const storedPoints = committedStrokeCoordinates.get(s.id);
+      if (storedPoints && storedPoints.length > 0) {
+        // Restore the stroke's points array from stored coordinates
+        // This ensures even if something modified the stroke object, we fix it here
+        s.points = storedPoints.map(p => ({ x: p.x, y: p.y, t: p.t }));
+      }
+    }
+    
     target.save();
     if (s.mode === 'erase') {
       target.globalCompositeOperation = 'destination-out';
@@ -168,22 +179,8 @@ export function createCanvasController(params: {
 
     target.beginPath();
     
-    // CRITICAL: For committed strokes, ALWAYS use the stored original coordinates
-    // This ensures strokes never move, even if server updates modify the stroke object
-    let points: Point[];
-    if (locallyCommittedStrokes.has(s.id)) {
-      const storedPoints = committedStrokeCoordinates.get(s.id);
-      if (storedPoints && storedPoints.length > 0) {
-        // Use the stored original coordinates - these are the source of truth
-        points = storedPoints;
-      } else {
-        // Fallback to stroke points if stored coordinates not found
-        points = s.points;
-      }
-    } else {
-      // For non-committed strokes, use the stroke's points
-      points = s.points;
-    }
+    // Use the stroke's points (which we just restored for committed strokes)
+    let points: Point[] = s.points;
     
     // Apply smoothing for better curve quality
     if (applySmoothing && points.length > 2) {
@@ -590,8 +587,10 @@ export function createCanvasController(params: {
     }
     // Calculate coordinates relative to canvas
     // Store in CSS pixel coordinates (canvas transform handles DPR scaling)
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    // Round to 2 decimal places to prevent floating point precision issues
+    const x = Number((e.clientX - rect.left).toFixed(2));
+    const y = Number((e.clientY - rect.top).toFixed(2));
+    
     return { x: x, y: y, t: performance.now() };
   }
 
@@ -737,7 +736,16 @@ export function createCanvasController(params: {
     
     // CRITICAL: Store original coordinates in a separate Map
     // This is the source of truth - these coordinates will NEVER be modified
-    committedStrokeCoordinates.set(committedStrokeId, exactPoints.map(p => ({ x: p.x, y: p.y, t: p.t })));
+    // Create a deep copy to ensure no references are shared
+    const lockedPoints = exactPoints.map(p => ({ 
+      x: Number(p.x.toFixed(2)), 
+      y: Number(p.y.toFixed(2)), 
+      t: p.t 
+    }));
+    committedStrokeCoordinates.set(committedStrokeId, lockedPoints);
+    
+    // Create stroke object with locked coordinates
+    const lockedPointsArray = lockedPoints.map(p => ({ x: p.x, y: p.y, t: p.t }));
     
     const strokeToCommit: StrokeOp = {
       id: activeStroke.id,
@@ -746,7 +754,7 @@ export function createCanvasController(params: {
       mode: activeStroke.mode,
       color: activeStroke.color,
       width: activeStroke.width,
-      points: exactPoints, // Use rounded coordinates for consistency
+      points: lockedPointsArray, // Use locked coordinates
       timestamp: activeStroke.timestamp,
     };
     if ((activeStroke as any).serverTimestamp) {
