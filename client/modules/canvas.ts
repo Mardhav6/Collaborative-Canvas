@@ -176,9 +176,15 @@ export function createCanvasController(params: {
             Math.abs(firstStrokePoint.y - firstStoredPoint.y) > 0.01) {
           // Coordinates don't match - this means something modified the stroke object
           // Log a warning and restore from stored coordinates
-          console.warn(`[canvas] Stroke ${s.id} coordinates were modified! Stored: (${firstStoredPoint.x.toFixed(2)}, ${firstStoredPoint.y.toFixed(2)}), Stroke object: (${firstStrokePoint?.x.toFixed(2) || 'undefined'}, ${firstStrokePoint?.y.toFixed(2) || 'undefined'}). Restoring from stored coordinates.`);
+          console.warn(`[canvas] Stroke ${s.id} coordinates were modified during render! Stored: (${firstStoredPoint.x.toFixed(4)}, ${firstStoredPoint.y.toFixed(4)}), Stroke object: (${firstStrokePoint?.x.toFixed(4) || 'undefined'}, ${firstStrokePoint?.y.toFixed(4) || 'undefined'}). Restoring from stored coordinates.`);
           // Replace the entire points array to ensure consistency
           s.points = pointsToRender.map(p => ({ x: p.x, y: p.y, t: p.t }));
+        }
+        
+        // Debug: Log rendering info for first few strokes to verify coordinates
+        if (Math.random() < 0.01) { // 1% of renders, to avoid spam
+          const rect = canvas.getBoundingClientRect();
+          console.log(`[canvas] Rendering committed stroke ${s.id.substring(0, 8)}... at (${firstStoredPoint.x.toFixed(2)}, ${firstStoredPoint.y.toFixed(2)}), canvas size: ${rect.width.toFixed(2)}x${rect.height.toFixed(2)}, transform: ${ctx.getTransform().a.toFixed(2)}`);
         }
       } else {
         // Fallback: if no stored coordinates, use stroke points but log warning
@@ -797,8 +803,25 @@ export function createCanvasController(params: {
     
     // Debug: Log first and last point to verify coordinates are correct
     if (lockedPointsRounded.length > 0) {
-      console.log(`[canvas] Committed stroke ${committedStrokeId}: first point (${lockedPointsRounded[0].x.toFixed(4)}, ${lockedPointsRounded[0].y.toFixed(4)}), last point (${lockedPointsRounded[lockedPointsRounded.length - 1].x.toFixed(4)}, ${lockedPointsRounded[lockedPointsRounded.length - 1].y.toFixed(4)}), canvas: ${commitCanvasWidth.toFixed(2)}x${commitCanvasHeight.toFixed(2)}`);
+      const firstPoint = lockedPointsRounded[0];
+      const lastPoint = lockedPointsRounded[lockedPointsRounded.length - 1];
+      console.log(`[canvas] Committed stroke ${committedStrokeId}: first point (${firstPoint.x.toFixed(4)}, ${firstPoint.y.toFixed(4)}), last point (${lastPoint.x.toFixed(4)}, ${lastPoint.y.toFixed(4)}), canvas: ${commitCanvasWidth.toFixed(2)}x${commitCanvasHeight.toFixed(2)}`);
       console.log(`[canvas] Original activeStroke.points[0]: (${activeStroke.points[0].x}, ${activeStroke.points[0].y})`);
+      
+      // Visual verification: Draw a small red circle at the stored first point
+      // This helps verify that coordinates are being rendered correctly
+      setTimeout(() => {
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform temporarily
+        const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
+        ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
+        ctx.fillStyle = 'red';
+        ctx.beginPath();
+        ctx.arc(firstPoint.x, firstPoint.y, 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        console.log(`[canvas] Drew verification marker at stored first point (${firstPoint.x.toFixed(2)}, ${firstPoint.y.toFixed(2)})`);
+      }, 50);
     }
     
     // CRITICAL: Verify coordinates immediately after storing
@@ -851,6 +874,16 @@ export function createCanvasController(params: {
       strokes.push(strokeToCommit);
     }
     
+    // CRITICAL: Before sorting, ensure the stroke object in the array has the correct coordinates
+    // This prevents any drift during sorting or other operations
+    const finalIndex = strokes.findIndex(s => s.id === committedStrokeId);
+    if (finalIndex >= 0) {
+      const stored = committedStrokeCoordinates.get(committedStrokeId);
+      if (stored) {
+        strokes[finalIndex].points = stored.map(p => ({ x: p.x, y: p.y, t: p.t }));
+      }
+    }
+    
     // Sort strokes after adding to maintain order
     strokes.sort((a, b) => {
       const aTime = a.timestamp || 0;
@@ -861,6 +894,17 @@ export function createCanvasController(params: {
       if (aServerTime !== bServerTime) return aServerTime - bServerTime;
       return a.userId.localeCompare(b.userId);
     });
+    
+    // CRITICAL: After sorting, restore coordinates again in case sorting moved objects
+    // Find the stroke again (it might be at a different index after sorting)
+    const afterSortIndex = strokes.findIndex(s => s.id === committedStrokeId);
+    if (afterSortIndex >= 0) {
+      const stored = committedStrokeCoordinates.get(committedStrokeId);
+      if (stored) {
+        strokes[afterSortIndex].points = stored.map(p => ({ x: p.x, y: p.y, t: p.t }));
+        console.log(`[canvas] Restored coordinates for stroke ${committedStrokeId} after sorting at index ${afterSortIndex}`);
+      }
+    }
     
     // Redraw immediately with committed stroke
     // The drawStroke function will automatically use stored coordinates from the Map
