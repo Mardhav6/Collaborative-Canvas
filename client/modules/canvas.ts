@@ -173,25 +173,41 @@ export function createCanvasController(params: {
       target.lineTo(points[1].x, points[1].y);
       target.stroke();
     } else {
-      // Multiple points - use simple smooth quadratic curves
-      // This is a proven technique used in many drawing apps
+      // Multiple points - use smooth curves with proper tangent calculation
+      // This creates fluid, natural-looking strokes
       target.moveTo(points[0].x, points[0].y);
       
-      for (let i = 1; i < points.length; i++) {
-        const prev = points[i - 1];
-        const curr = points[i];
-        
-        if (i === points.length - 1) {
-          // Last point - draw directly to it
-          target.lineTo(curr.x, curr.y);
-        } else {
-          // Middle points - use smooth quadratic curves
-          const next = points[i + 1];
-          // Control point is the current point
-          // End point is midpoint between current and next for smooth transition
-          const endX = (curr.x + next.x) / 2;
-          const endY = (curr.y + next.y) / 2;
-          target.quadraticCurveTo(curr.x, curr.y, endX, endY);
+      if (points.length === 3) {
+        // For 3 points, use a single smooth quadratic curve
+        const cpX = points[1].x;
+        const cpY = points[1].y;
+        target.quadraticCurveTo(cpX, cpY, points[2].x, points[2].y);
+      } else {
+        // For 4+ points, draw smooth connected curves
+        for (let i = 0; i < points.length - 1; i++) {
+          const p0 = i > 0 ? points[i - 1] : points[i];
+          const p1 = points[i];
+          const p2 = points[i + 1];
+          const p3 = i < points.length - 2 ? points[i + 2] : p2;
+          
+          // Calculate control points using tangent vectors for smooth curves
+          const t = 0.3; // Tension factor for smoothness
+          
+          // Control point 1 (for cubic bezier)
+          const cp1x = p1.x + (p2.x - p0.x) * t;
+          const cp1y = p1.y + (p2.y - p0.y) * t;
+          
+          // Control point 2 (for cubic bezier)  
+          const cp2x = p2.x - (p3.x - p1.x) * t;
+          const cp2y = p2.y - (p3.y - p1.y) * t;
+          
+          if (i === 0) {
+            // First segment - start with quadratic for smooth beginning
+            target.quadraticCurveTo(cp1x, cp1y, p2.x, p2.y);
+          } else {
+            // Use cubic bezier for smooth continuous curves
+            target.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
+          }
         }
       }
       
