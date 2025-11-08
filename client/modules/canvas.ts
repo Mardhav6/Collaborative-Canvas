@@ -693,20 +693,22 @@ export function createCanvasController(params: {
   });
 
   function canvasPointFromEvent(e: PointerEvent): Point {
-    // Get coordinates BEFORE any pointer capture to ensure accuracy
-    // Use getBoundingClientRect() for reliable coordinate calculation
+    // CRITICAL: Get coordinates using the most reliable method
+    // Use getBoundingClientRect() which accounts for all CSS positioning
     const rect = canvas.getBoundingClientRect();
     
-    // Calculate coordinates relative to canvas element
-    // clientX/clientY are viewport coordinates, subtract canvas position
-    let x = e.clientX - rect.left;
-    let y = e.clientY - rect.top;
+    // Calculate mouse position relative to canvas top-left corner
+    // This gives us coordinates in CSS pixel space
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
     
-    // Ensure transform is set correctly for rendering
+    // Ensure the canvas context transform is set correctly
+    // We draw in CSS pixel coordinates, and the transform scales for DPR
     const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
     ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
     
-    // Store coordinates in CSS pixel space (the transform handles DPR scaling)
+    // Return coordinates in CSS pixel space
+    // The canvas transform will scale these correctly when rendering
     return { 
       x: Number(x.toFixed(4)), 
       y: Number(y.toFixed(4)), 
@@ -954,7 +956,6 @@ export function createCanvasController(params: {
         ctx.arc(firstPoint.x, firstPoint.y, 6, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
-        console.log(`[canvas] Drew RED marker at STORED first point (${firstPoint.x.toFixed(2)}, ${firstPoint.y.toFixed(2)}) - this should match where stroke starts`);
       }, 100);
     }
     
