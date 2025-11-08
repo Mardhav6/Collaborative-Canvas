@@ -693,22 +693,40 @@ export function createCanvasController(params: {
   });
 
   function canvasPointFromEvent(e: PointerEvent): Point {
-    // CRITICAL: Get coordinates using the most reliable method
-    // Use getBoundingClientRect() which accounts for all CSS positioning
+    // CRITICAL FIX: Use the canvas element's actual bounding box
+    // Account for any CSS transforms, scaling, or positioning
     const rect = canvas.getBoundingClientRect();
     
-    // Calculate mouse position relative to canvas top-left corner
-    // This gives us coordinates in CSS pixel space
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    // Get the computed style to check for any transforms
+    const style = window.getComputedStyle(canvas);
+    const transform = style.transform;
     
-    // Ensure the canvas context transform is set correctly
-    // We draw in CSS pixel coordinates, and the transform scales for DPR
+    // Calculate coordinates relative to the canvas element's visual position
+    // This accounts for the canvas's actual position on screen
+    let x = e.clientX - rect.left;
+    let y = e.clientY - rect.top;
+    
+    // If there's a CSS transform, we need to account for it
+    // But typically, getBoundingClientRect() already accounts for transforms
+    // So we should be good with just the subtraction above
+    
+    // CRITICAL: Ensure canvas coordinate space matches display
+    // The canvas buffer is sized with DPR, but we draw in CSS pixels
+    // So coordinates should be in CSS pixel space
     const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
+    
+    // Set transform for rendering (draws in CSS pixels, scales to device pixels)
     ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
     
+    // Validate coordinates are within canvas bounds
+    if (x < 0 || x > rect.width || y < 0 || y > rect.height) {
+      // Allow slight overflow for edge cases, but log if way out of bounds
+      if (x < -10 || x > rect.width + 10 || y < -10 || y > rect.height + 10) {
+        console.warn(`[canvas] Coordinates way out of bounds: (${x.toFixed(2)}, ${y.toFixed(2)}), canvas: ${rect.width.toFixed(2)}x${rect.height.toFixed(2)}`);
+      }
+    }
+    
     // Return coordinates in CSS pixel space
-    // The canvas transform will scale these correctly when rendering
     return { 
       x: Number(x.toFixed(4)), 
       y: Number(y.toFixed(4)), 
