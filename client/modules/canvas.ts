@@ -749,6 +749,32 @@ export function createCanvasController(params: {
     const rect = canvas.getBoundingClientRect();
     strokeStartCanvasSize = { width: rect.width, height: rect.height };
     
+    // DEBUG: Draw a visible red marker at the exact click position to verify coordinates
+    const testPoint = canvasPointFromEvent(e);
+    const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
+    
+    // Draw on offscreen canvas so marker persists
+    octx.save();
+    octx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
+    octx.fillStyle = 'red';
+    octx.globalAlpha = 0.9;
+    octx.beginPath();
+    octx.arc(testPoint.x, testPoint.y, 25, 0, Math.PI * 2);
+    octx.fill();
+    octx.restore();
+    
+    // Also draw on main canvas for immediate feedback
+    ctx.save();
+    ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
+    ctx.fillStyle = 'red';
+    ctx.globalAlpha = 0.9;
+    ctx.beginPath();
+    ctx.arc(testPoint.x, testPoint.y, 25, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    
+    console.log(`[canvas] DEBUG: Click at viewport (${e.clientX.toFixed(1)}, ${e.clientY.toFixed(1)}) -> canvas (${testPoint.x.toFixed(2)}, ${testPoint.y.toFixed(2)})`);
+    
     if (now - lastStrokeStartTime < 100 && isPointerDown) {
       return; // Ignore rapid successive starts
     }
