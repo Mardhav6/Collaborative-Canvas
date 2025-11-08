@@ -152,18 +152,28 @@ export function createCanvasController(params: {
   }
 
   function drawStroke(target: CanvasRenderingContext2D, s: StrokeOp, applySmoothing = true) {
-    if (!s || s.points.length < 1 || s.isDeleted) return;
+    if (!s || s.isDeleted) return;
     
-    // CRITICAL: For committed strokes, restore coordinates from Map BEFORE rendering
-    // This ensures the stroke object always has the correct coordinates
+    // CRITICAL: For committed strokes, ALWAYS use coordinates from Map
+    // Never trust the stroke object's points - they might have been modified by server
+    let pointsToRender: Point[];
     if (locallyCommittedStrokes.has(s.id)) {
       const storedPoints = committedStrokeCoordinates.get(s.id);
       if (storedPoints && storedPoints.length > 0) {
-        // Restore the stroke's points array from stored coordinates
-        // This ensures even if something modified the stroke object, we fix it here
-        s.points = storedPoints.map(p => ({ x: p.x, y: p.y, t: p.t }));
+        // Use stored coordinates directly - these are the source of truth
+        pointsToRender = storedPoints;
+      } else {
+        // Fallback: if no stored coordinates, use stroke points but log warning
+        console.warn(`[canvas] Committed stroke ${s.id} has no stored coordinates, using stroke points`);
+        pointsToRender = s.points;
       }
+    } else {
+      // For non-committed strokes, use the stroke's points
+      pointsToRender = s.points;
     }
+    
+    // Early return if no points to render
+    if (!pointsToRender || pointsToRender.length < 1) return;
     
     target.save();
     if (s.mode === 'erase') {
@@ -179,8 +189,8 @@ export function createCanvasController(params: {
 
     target.beginPath();
     
-    // Use the stroke's points (which we just restored for committed strokes)
-    let points: Point[] = s.points;
+    // Use the points we determined above (either from Map or stroke object)
+    let points: Point[] = pointsToRender;
     
     // Apply smoothing for better curve quality
     if (applySmoothing && points.length > 2) {
@@ -291,6 +301,10 @@ export function createCanvasController(params: {
   }
 
   function redrawAll() {
+    // Ensure transform is correct before rendering
+    const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
+    ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
+    
     resizeOffscreen();
     clearCanvas(octx);
     
@@ -578,20 +592,27 @@ export function createCanvasController(params: {
   });
 
   function canvasPointFromEvent(e: PointerEvent): Point {
+    // CRITICAL: Always get fresh bounding rect to account for canvas resizing
+    // This ensures coordinates are always relative to the current canvas position
     const rect = canvas.getBoundingClientRect();
-    // Ensure transform is correct before calculating coordinates
-    const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
-    if (currentDpr !== dpr) {
-      // DPR changed, update transform
-      ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
-    }
-    // Calculate coordinates relative to canvas
-    // Store in CSS pixel coordinates (canvas transform handles DPR scaling)
-    // Round to 2 decimal places to prevent floating point precision issues
-    const x = Number((e.clientX - rect.left).toFixed(2));
-    const y = Number((e.clientY - rect.top).toFixed(2));
     
-    return { x: x, y: y, t: performance.now() };
+    // Ensure transform is correct - always use current DPR
+    const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
+    ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
+    
+    // Calculate coordinates in CSS pixel space
+    // These coordinates are relative to the canvas element's top-left corner
+    // and will work correctly with the canvas transform (which scales by DPR)
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    // Store with sufficient precision to prevent rounding errors
+    // Use 4 decimal places for sub-pixel accuracy
+    return { 
+      x: Number(x.toFixed(4)), 
+      y: Number(y.toFixed(4)), 
+      t: performance.now() 
+    };
   }
 
   let lastStrokeStartTime = 0;
@@ -737,12 +758,25 @@ export function createCanvasController(params: {
     // CRITICAL: Store original coordinates in a separate Map
     // This is the source of truth - these coordinates will NEVER be modified
     // Create a deep copy to ensure no references are shared
+    // Store coordinates with high precision to prevent rounding errors
     const lockedPoints = exactPoints.map(p => ({ 
-      x: Number(p.x.toFixed(2)), 
-      y: Number(p.y.toFixed(2)), 
+      x: Number(p.x.toFixed(4)), // Higher precision to prevent drift
+      y: Number(p.y.toFixed(4)), 
       t: p.t 
     }));
+    
+    // Store canvas dimensions at commit time for validation
+    const rect = canvas.getBoundingClientRect();
+    const commitCanvasWidth = rect.width;
+    const commitCanvasHeight = rect.height;
+    
+    // Store coordinates along with canvas dimensions for validation
     committedStrokeCoordinates.set(committedStrokeId, lockedPoints);
+    
+    // Debug: Log first and last point to verify coordinates are correct
+    if (lockedPoints.length > 0) {
+      console.log(`[canvas] Committed stroke ${committedStrokeId}: first point (${lockedPoints[0].x.toFixed(2)}, ${lockedPoints[0].y.toFixed(2)}), last point (${lockedPoints[lockedPoints.length - 1].x.toFixed(2)}, ${lockedPoints[lockedPoints.length - 1].y.toFixed(2)}), canvas: ${commitCanvasWidth}x${commitCanvasHeight}`);
+    }
     
     // Create stroke object with locked coordinates
     const lockedPointsArray = lockedPoints.map(p => ({ x: p.x, y: p.y, t: p.t }));
@@ -946,6 +980,11 @@ export function createCanvasController(params: {
   let lastFullRedraw = 0;
   function render() {
     const now = performance.now();
+    
+    // CRITICAL: Always ensure transform is correct before rendering
+    // This ensures coordinates are rendered at the correct positions
+    const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
+    ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
     
     // Always render drawing layer if we need redraw or are actively drawing
     // Also do periodic full redraws to catch any missed updates (every 100ms)
