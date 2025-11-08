@@ -712,13 +712,10 @@ export function createCanvasController(params: {
       y = offsetY;
     } else {
       // Fallback to getBoundingClientRect() if offsetX/offsetY not available
+      // getBoundingClientRect() already accounts for scroll and CSS transforms
       const rect = canvas.getBoundingClientRect();
       x = e.clientX - rect.left;
       y = e.clientY - rect.top;
-      
-      // Also account for page scroll if any
-      x += window.scrollX || 0;
-      y += window.scrollY || 0;
     }
     
     // Validate coordinates are within canvas bounds
