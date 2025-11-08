@@ -1067,9 +1067,19 @@ export function createCanvasController(params: {
     if (afterSortIndex >= 0) {
       const stored = committedStrokeCoordinates.get(committedStrokeId);
       if (stored) {
+        const beforeRestore = strokes[afterSortIndex].points[0];
         strokes[afterSortIndex].points = stored.map(p => ({ x: p.x, y: p.y, t: p.t }));
-        console.log(`[canvas] Restored coordinates for stroke ${committedStrokeId} after sorting at index ${afterSortIndex}`);
+        const afterRestore = strokes[afterSortIndex].points[0];
+        console.log(`[canvas] After sorting - restored coordinates for stroke ${committedStrokeId.substring(0, 16)}:`);
+        console.log(`  - Before restore: (${beforeRestore?.x.toFixed(2) || 'N/A'}, ${beforeRestore?.y.toFixed(2) || 'N/A'})`);
+        console.log(`  - Stored in Map: (${stored[0].x.toFixed(2)}, ${stored[0].y.toFixed(2)})`);
+        console.log(`  - After restore: (${afterRestore.x.toFixed(2)}, ${afterRestore.y.toFixed(2)})`);
+        console.log(`  - Index: ${afterSortIndex}`);
+      } else {
+        console.error(`[canvas] ERROR: After sorting, stroke ${committedStrokeId.substring(0, 16)} has NO stored coordinates in Map!`);
       }
+    } else {
+      console.error(`[canvas] ERROR: After sorting, stroke ${committedStrokeId.substring(0, 16)} not found in strokes array!`);
     }
     
     // CRITICAL: Before redrawing, verify the stroke object has correct coordinates
