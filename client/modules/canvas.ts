@@ -1237,6 +1237,22 @@ export function createCanvasController(params: {
       if (activeShape) {
         drawShape(ctx, activeShape);
       }
+      
+      // DEBUG: Draw green marker at first point of active stroke if drawing
+      // This helps verify coordinates are correct during drawing
+      if (isActivelyDrawing && activeStroke && activeStroke.points.length > 0) {
+        const firstPoint = activeStroke.points[0];
+        ctx.save();
+        const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
+        ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
+        ctx.fillStyle = 'lime';
+        ctx.globalAlpha = 0.8;
+        ctx.beginPath();
+        ctx.arc(firstPoint.x, firstPoint.y, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      
       needsRedraw = false;
     }
     
