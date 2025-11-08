@@ -693,40 +693,32 @@ export function createCanvasController(params: {
   });
 
   function canvasPointFromEvent(e: PointerEvent): Point {
-    // CRITICAL FIX: Use the canvas element's actual bounding box
-    // Account for any CSS transforms, scaling, or positioning
-    const rect = canvas.getBoundingClientRect();
+    // URGENT FIX: Use the simplest, most reliable coordinate calculation
+    // Try offsetX/offsetY first (most accurate for canvas elements)
+    const offsetX = (e as any).offsetX;
+    const offsetY = (e as any).offsetY;
     
-    // Get the computed style to check for any transforms
-    const style = window.getComputedStyle(canvas);
-    const transform = style.transform;
+    let x: number;
+    let y: number;
     
-    // Calculate coordinates relative to the canvas element's visual position
-    // This accounts for the canvas's actual position on screen
-    let x = e.clientX - rect.left;
-    let y = e.clientY - rect.top;
-    
-    // If there's a CSS transform, we need to account for it
-    // But typically, getBoundingClientRect() already accounts for transforms
-    // So we should be good with just the subtraction above
-    
-    // CRITICAL: Ensure canvas coordinate space matches display
-    // The canvas buffer is sized with DPR, but we draw in CSS pixels
-    // So coordinates should be in CSS pixel space
-    const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
-    
-    // Set transform for rendering (draws in CSS pixels, scales to device pixels)
-    ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
-    
-    // Validate coordinates are within canvas bounds
-    if (x < 0 || x > rect.width || y < 0 || y > rect.height) {
-      // Allow slight overflow for edge cases, but log if way out of bounds
-      if (x < -10 || x > rect.width + 10 || y < -10 || y > rect.height + 10) {
-        console.warn(`[canvas] Coordinates way out of bounds: (${x.toFixed(2)}, ${y.toFixed(2)}), canvas: ${rect.width.toFixed(2)}x${rect.height.toFixed(2)}`);
-      }
+    if (typeof offsetX === 'number' && typeof offsetY === 'number' && 
+        !isNaN(offsetX) && !isNaN(offsetY) && 
+        offsetX >= 0 && offsetY >= 0) {
+      // Use offsetX/offsetY - these are the most accurate
+      x = offsetX;
+      y = offsetY;
+    } else {
+      // Fallback: calculate from getBoundingClientRect()
+      const rect = canvas.getBoundingClientRect();
+      x = e.clientX - rect.left;
+      y = e.clientY - rect.top;
     }
     
-    // Return coordinates in CSS pixel space
+    // Ensure transform is correct for rendering
+    const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
+    ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
+    
+    // Return coordinates
     return { 
       x: Number(x.toFixed(4)), 
       y: Number(y.toFixed(4)), 
