@@ -694,21 +694,24 @@ export function createCanvasController(params: {
     const rect = canvas.getBoundingClientRect();
     strokeStartCanvasSize = { width: rect.width, height: rect.height };
     
-    // DEBUG: Draw a green marker at the exact capture point to verify coordinate accuracy
+    // DEBUG: Draw a green marker at the exact capture point IMMEDIATELY
+    // This helps verify that coordinates are captured correctly
     const testPoint = canvasPointFromEvent(e);
-    // Draw marker immediately to verify coordinate capture
-    requestAnimationFrame(() => {
-      const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
-      ctx.save();
-      ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
-      ctx.fillStyle = 'lime';
-      ctx.globalAlpha = 0.8;
-      ctx.beginPath();
-      ctx.arc(testPoint.x, testPoint.y, 8, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-      console.log(`[canvas] DEBUG: Drew green marker at captured point (${testPoint.x.toFixed(2)}, ${testPoint.y.toFixed(2)})`);
-    });
+    const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
+    ctx.save();
+    ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
+    ctx.fillStyle = 'lime';
+    ctx.globalAlpha = 1.0;
+    ctx.beginPath();
+    ctx.arc(testPoint.x, testPoint.y, 10, 0, Math.PI * 2);
+    ctx.fill();
+    // Draw a smaller black dot in center for precise verification
+    ctx.fillStyle = 'black';
+    ctx.beginPath();
+    ctx.arc(testPoint.x, testPoint.y, 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    console.log(`[canvas] DEBUG: Drew GREEN marker at captured point (${testPoint.x.toFixed(2)}, ${testPoint.y.toFixed(2)}) - this should be EXACTLY where you clicked!`);
     
     if (now - lastStrokeStartTime < 100 && isPointerDown) {
       return; // Ignore rapid successive starts
