@@ -199,20 +199,23 @@ export function createCanvasController(params: {
         // Do this every time we render to prevent any drift
         const firstStoredPoint = storedPoints[0];
         const firstStrokePoint = s.points[0];
+        
+        // ALWAYS log for debugging - this is the critical issue
+        if (Math.random() < 0.1) { // 10% sampling
+          console.log(`[canvas] Rendering committed stroke ${s.id.substring(0, 16)}...`);
+          console.log(`  - Retrieved from Map: first point (${firstStoredPoint.x.toFixed(4)}, ${firstStoredPoint.y.toFixed(4)})`);
+          console.log(`  - Stroke object points[0]: (${firstStrokePoint?.x.toFixed(4) || 'undefined'}, ${firstStrokePoint?.y.toFixed(4) || 'undefined'})`);
+          console.log(`  - Will render using: (${pointsToRender[0].x.toFixed(4)}, ${pointsToRender[0].y.toFixed(4)})`);
+        }
+        
         if (!firstStrokePoint || 
             Math.abs(firstStrokePoint.x - firstStoredPoint.x) > 0.01 || 
             Math.abs(firstStrokePoint.y - firstStoredPoint.y) > 0.01) {
           // Coordinates don't match - this means something modified the stroke object
           // Log a warning and restore from stored coordinates
-          console.warn(`[canvas] Stroke ${s.id} coordinates were modified during render! Stored: (${firstStoredPoint.x.toFixed(4)}, ${firstStoredPoint.y.toFixed(4)}), Stroke object: (${firstStrokePoint?.x.toFixed(4) || 'undefined'}, ${firstStrokePoint?.y.toFixed(4) || 'undefined'}). Restoring from stored coordinates.`);
+          console.warn(`[canvas] Stroke ${s.id.substring(0, 16)} coordinates were modified! Stored: (${firstStoredPoint.x.toFixed(4)}, ${firstStoredPoint.y.toFixed(4)}), Stroke object: (${firstStrokePoint?.x.toFixed(4) || 'undefined'}, ${firstStrokePoint?.y.toFixed(4) || 'undefined'}). Restoring.`);
           // Replace the entire points array to ensure consistency
           s.points = pointsToRender.map(p => ({ x: p.x, y: p.y, t: p.t }));
-        }
-        
-        // Debug: Log rendering info for first few strokes to verify coordinates
-        if (Math.random() < 0.01) { // 1% of renders, to avoid spam
-          const rect = canvas.getBoundingClientRect();
-          console.log(`[canvas] Rendering committed stroke ${s.id.substring(0, 8)}... at (${firstStoredPoint.x.toFixed(2)}, ${firstStoredPoint.y.toFixed(2)}), canvas size: ${rect.width.toFixed(2)}x${rect.height.toFixed(2)}, transform: ${ctx.getTransform().a.toFixed(2)}`);
         }
       } else {
         // Fallback: if no stored coordinates, use stroke points but log warning
@@ -389,7 +392,25 @@ export function createCanvasController(params: {
     // Always apply smoothing to all committed strokes for smooth rendering
     for (const s of sortedOps) {
       if ((s as any).type === 'stroke') {
-        if (!(s as any).isDeleted) drawStroke(octx, s as StrokeOp, true); // Always smooth committed strokes
+        if (!(s as any).isDeleted) {
+          // CRITICAL: For committed strokes, verify stored coordinates before rendering
+          if (locallyCommittedStrokes.has(s.id)) {
+            const stored = committedStrokeCoordinates.get(s.id);
+            if (stored && stored.length > 0) {
+              // Verify stored coordinates match what we expect
+              const strokeFirst = s.points[0];
+              const storedFirst = stored[0];
+              if (strokeFirst && storedFirst && 
+                  (Math.abs(strokeFirst.x - storedFirst.x) > 0.01 || 
+                   Math.abs(strokeFirst.y - storedFirst.y) > 0.01)) {
+                console.warn(`[canvas] Before redrawAll: Stroke ${s.id.substring(0, 16)} has mismatched coordinates. Stroke: (${strokeFirst.x.toFixed(2)}, ${strokeFirst.y.toFixed(2)}), Stored: (${storedFirst.x.toFixed(2)}, ${storedFirst.y.toFixed(2)}). Fixing...`);
+                // Fix it before rendering
+                s.points = stored.map(p => ({ x: p.x, y: p.y, t: p.t }));
+              }
+            }
+          }
+          drawStroke(octx, s as StrokeOp, true); // Always smooth committed strokes
+        }
       } else {
         drawShape(octx, s as any);
       }
