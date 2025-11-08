@@ -688,6 +688,14 @@ export function createCanvasController(params: {
     // This prevents any race conditions with server updates
     locallyCommittedStrokes.add(committedStrokeId);
     
+    // Store the exact coordinates as drawn - these are in CSS pixel space
+    // and will be rendered correctly with the canvas transform
+    const exactPoints = activeStroke.points.map(p => ({ 
+      x: Number(p.x.toFixed(2)), // Round to prevent floating point issues
+      y: Number(p.y.toFixed(2)), 
+      t: p.t 
+    }));
+    
     const strokeToCommit: StrokeOp = {
       id: activeStroke.id,
       userId: activeStroke.userId,
@@ -695,12 +703,16 @@ export function createCanvasController(params: {
       mode: activeStroke.mode,
       color: activeStroke.color,
       width: activeStroke.width,
-      points: activeStroke.points.map(p => ({ x: p.x, y: p.y, t: p.t })), // Deep immutable copy
+      points: exactPoints, // Use rounded coordinates for consistency
       timestamp: activeStroke.timestamp,
     };
     if ((activeStroke as any).serverTimestamp) {
       (strokeToCommit as any).serverTimestamp = (activeStroke as any).serverTimestamp;
     }
+    
+    // Store a reference to the exact coordinates for verification
+    (strokeToCommit as any).__localCommit = true;
+    (strokeToCommit as any).__originalPoints = exactPoints.map(p => ({ x: p.x, y: p.y }));
     
     // Remove any existing stroke with this ID and add our committed version
     // This ensures we're not updating a reference that might be modified
@@ -731,25 +743,51 @@ export function createCanvasController(params: {
       return a.userId.localeCompare(b.userId);
     });
     
-    // Force immediate redraw with committed stroke to ensure it's displayed correctly
-    // Use requestAnimationFrame to ensure this happens after any pending operations
-    requestAnimationFrame(() => {
-      // Double-check that our committed stroke is still in the array and has correct coordinates
+    // Set up a guard to protect this committed stroke
+    // Check periodically that coordinates haven't been modified
+    const originalPoints = exactPoints.map(p => ({ x: p.x, y: p.y }));
+    let checkCount = 0;
+    const maxChecks = 10; // Check 10 times over 1 second
+    
+    const verifyInterval = setInterval(() => {
+      checkCount++;
       const verifyStroke = strokes.find(s => s.id === committedStrokeId);
-      if (verifyStroke && savedActiveStroke) {
-        // Ensure coordinates match exactly - if not, fix them
-        const pointsMatch = verifyStroke.points.length === savedActiveStroke.points.length &&
-          verifyStroke.points.length > 0 &&
-          Math.abs(verifyStroke.points[0].x - savedActiveStroke.points[0].x) < 0.01 &&
-          Math.abs(verifyStroke.points[0].y - savedActiveStroke.points[0].y) < 0.01;
-        
-        if (!pointsMatch) {
-          // Coordinates were modified somehow - restore from saved
-          verifyStroke.points = savedActiveStroke.points.map(p => ({ x: p.x, y: p.y, t: p.t }));
+      
+      if (!verifyStroke || !locallyCommittedStrokes.has(committedStrokeId)) {
+        // Stroke was removed or uncommitted - stop checking
+        clearInterval(verifyInterval);
+        return;
+      }
+      
+      // Check if coordinates were modified
+      if (verifyStroke.points.length !== originalPoints.length) {
+        // Points count changed - restore
+        verifyStroke.points = originalPoints.map((p, i) => ({ 
+          x: p.x, 
+          y: p.y, 
+          t: verifyStroke.points[i]?.t || Date.now() 
+        }));
+        redrawAll();
+      } else if (verifyStroke.points.length > 0) {
+        // Check first point matches
+        const firstOriginal = originalPoints[0];
+        const firstCurrent = verifyStroke.points[0];
+        if (Math.abs(firstCurrent.x - firstOriginal.x) > 0.5 || 
+            Math.abs(firstCurrent.y - firstOriginal.y) > 0.5) {
+          // Coordinates were modified - restore
+          verifyStroke.points = originalPoints.map((p, i) => ({ 
+            x: p.x, 
+            y: p.y, 
+            t: verifyStroke.points[i]?.t || Date.now() 
+          }));
           redrawAll();
         }
       }
-    });
+      
+      if (checkCount >= maxChecks) {
+        clearInterval(verifyInterval);
+      }
+    }, 100); // Check every 100ms for 1 second
     
     // Redraw immediately with committed stroke
     redrawAll();
