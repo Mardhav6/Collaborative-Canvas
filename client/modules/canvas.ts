@@ -353,11 +353,18 @@ export function createCanvasController(params: {
   }
 
   function redrawAll() {
-    // Ensure transform is correct before rendering
+    // CRITICAL: Ensure transform is correct on BOTH contexts before rendering
+    // Both main canvas and offscreen canvas must use the exact same transform
     const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
     ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
     
     resizeOffscreen();
+    
+    // CRITICAL: Ensure offscreen context has the exact same transform as main context
+    // This ensures coordinates render at the same positions on both canvases
+    const verifyDpr = Math.max(window.devicePixelRatio || 1, 1);
+    octx.setTransform(verifyDpr, 0, 0, verifyDpr, 0, 0);
+    
     clearCanvas(octx);
     
     // Sort all ops by timestamp for consistent conflict resolution
