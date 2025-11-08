@@ -693,32 +693,30 @@ export function createCanvasController(params: {
   });
 
   function canvasPointFromEvent(e: PointerEvent): Point {
-    // URGENT FIX: Use the simplest, most reliable coordinate calculation
-    // Try offsetX/offsetY first (most accurate for canvas elements)
-    const offsetX = (e as any).offsetX;
-    const offsetY = (e as any).offsetY;
+    // FINAL FIX: Calculate coordinates that match the canvas rendering coordinate system
+    // The canvas is sized with DPR: canvas.width = CSS_width * DPR
+    // We draw in CSS pixel coordinates with transform scale(DPR, DPR)
+    // So coordinates should be in CSS pixel space relative to canvas element
     
-    let x: number;
-    let y: number;
+    // Get canvas element's bounding box (accounts for all CSS transforms)
+    const rect = canvas.getBoundingClientRect();
     
-    if (typeof offsetX === 'number' && typeof offsetY === 'number' && 
-        !isNaN(offsetX) && !isNaN(offsetY) && 
-        offsetX >= 0 && offsetY >= 0) {
-      // Use offsetX/offsetY - these are the most accurate
-      x = offsetX;
-      y = offsetY;
-    } else {
-      // Fallback: calculate from getBoundingClientRect()
-      const rect = canvas.getBoundingClientRect();
-      x = e.clientX - rect.left;
-      y = e.clientY - rect.top;
-    }
+    // Calculate mouse position in CSS pixels relative to canvas top-left
+    // clientX/clientY are viewport coordinates
+    const cssX = e.clientX - rect.left;
+    const cssY = e.clientY - rect.top;
     
-    // Ensure transform is correct for rendering
+    // The canvas coordinate system uses CSS pixels
+    // The transform (DPR, 0, 0, DPR, 0, 0) scales CSS pixels to device pixels
+    // So we use CSS pixel coordinates directly
+    const x = cssX;
+    const y = cssY;
+    
+    // Ensure transform is set correctly (should already be set, but ensure it)
     const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
     ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
     
-    // Return coordinates
+    // Return coordinates in CSS pixel space
     return { 
       x: Number(x.toFixed(4)), 
       y: Number(y.toFixed(4)), 
