@@ -697,41 +697,32 @@ export function createCanvasController(params: {
     const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
     ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
     
-    // CRITICAL: Calculate coordinates using getBoundingClientRect() which accounts for all CSS transforms
-    // This is the most reliable method that works consistently across all browsers and layouts
-    const rect = canvas.getBoundingClientRect();
+    // CRITICAL: Use offsetX/offsetY directly - these are the most accurate for canvas elements
+    // They account for all CSS transforms, padding, borders, and scaling automatically
+    // getBoundingClientRect() can be affected by scroll, parent transforms, etc.
+    let x: number;
+    let y: number;
     
-    // Get the actual canvas element's display size (CSS pixels)
-    const canvasDisplayWidth = rect.width;
-    const canvasDisplayHeight = rect.height;
-    
-    // Get the actual canvas buffer size (device pixels)
-    const canvasBufferWidth = canvas.width;
-    const canvasBufferHeight = canvas.height;
-    
-    // Calculate the scale factor between display and buffer
-    // This accounts for any scaling that might be applied
-    const scaleX = canvasBufferWidth / canvasDisplayWidth;
-    const scaleY = canvasBufferHeight / canvasDisplayHeight;
-    
-    // Calculate mouse position relative to canvas element's bounding box
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-    
-    // Convert to canvas coordinate space (CSS pixels)
-    // The canvas context transform will handle the DPR scaling when we draw
-    const x = mouseX;
-    const y = mouseY;
-    
-    // Validate coordinates
-    if (x < 0 || x > canvasDisplayWidth || y < 0 || y > canvasDisplayHeight) {
-      console.warn(`[canvas] Coordinates out of bounds: (${x.toFixed(2)}, ${y.toFixed(2)}), canvas display: ${canvasDisplayWidth.toFixed(2)}x${canvasDisplayHeight.toFixed(2)}`);
-    }
-    
-    // Debug logging
     const offsetX = (e as any).offsetX;
     const offsetY = (e as any).offsetY;
-    console.log(`[canvas] Coordinate calc: client(${e.clientX.toFixed(1)},${e.clientY.toFixed(1)}) rect(${rect.left.toFixed(1)},${rect.top.toFixed(1)}) mouse(${mouseX.toFixed(2)},${mouseY.toFixed(2)}) final(${x.toFixed(2)},${y.toFixed(2)}) offset(${offsetX?.toFixed(2) || 'N/A'},${offsetY?.toFixed(2) || 'N/A'}) scale(${scaleX.toFixed(3)},${scaleY.toFixed(3)})`);
+    
+    if (offsetX !== undefined && offsetY !== undefined && !isNaN(offsetX) && !isNaN(offsetY) && offsetX >= 0 && offsetY >= 0) {
+      // Use offsetX/offsetY directly - these are already in CSS pixel coordinates
+      // and account for all canvas scaling and positioning
+      x = offsetX;
+      y = offsetY;
+    } else {
+      // Fallback: use getBoundingClientRect() if offsetX/offsetY not available
+      const rect = canvas.getBoundingClientRect();
+      x = e.clientX - rect.left;
+      y = e.clientY - rect.top;
+    }
+    
+    // Validate coordinates are within canvas bounds
+    const rect = canvas.getBoundingClientRect();
+    if (x < 0 || x > rect.width || y < 0 || y > rect.height) {
+      console.warn(`[canvas] Coordinates out of bounds: (${x.toFixed(2)}, ${y.toFixed(2)}), canvas CSS: ${rect.width.toFixed(2)}x${rect.height.toFixed(2)}`);
+    }
     
     // Store with sufficient precision
     return { 
