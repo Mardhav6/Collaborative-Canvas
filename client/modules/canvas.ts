@@ -386,8 +386,7 @@ export function createCanvasController(params: {
     
     // CRITICAL: Ensure offscreen context has the exact same transform as main context
     // This ensures coordinates render at the same positions on both canvases
-    const verifyDpr = Math.max(window.devicePixelRatio || 1, 1);
-    octx.setTransform(verifyDpr, 0, 0, verifyDpr, 0, 0);
+    octx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
     
     clearCanvas(octx);
     
@@ -440,7 +439,6 @@ export function createCanvasController(params: {
     // blit offscreen canvas to main canvas
     // CRITICAL: Reset transform before drawing image (drawImage uses device pixels)
     // The offscreen canvas is already rendered with the transform, so we draw it at 1:1 scale
-    const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset to identity transform
     clearCanvas(ctx);
