@@ -644,36 +644,40 @@ export function createCanvasController(params: {
   });
 
   function canvasPointFromEvent(e: PointerEvent): Point {
-    // CRITICAL: Always get fresh bounding rect to account for canvas resizing
-    // This ensures coordinates are always relative to the current canvas position
-    const rect = canvas.getBoundingClientRect();
-    
     // Ensure transform is correct - always use current DPR
     const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
     ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
     
-    // Calculate coordinates in CSS pixel space
-    // These coordinates are relative to the canvas element's top-left corner
-    // CRITICAL: Use clientX/clientY which are viewport-relative, subtract rect.left/top
-    // to get coordinates relative to canvas element
-    // Account for any scroll offset if canvas is in a scrollable container
-    const scrollX = window.scrollX || 0;
-    const scrollY = window.scrollY || 0;
+    // CRITICAL: Use offsetX/offsetY which are directly relative to the target element
+    // This is more reliable than calculating from clientX/clientY and getBoundingClientRect()
+    // offsetX/offsetY automatically account for element position, padding, borders, etc.
+    let x: number;
+    let y: number;
     
-    // Calculate raw coordinates
-    const rawX = e.clientX - rect.left;
-    const rawY = e.clientY - rect.top;
+    if (e.offsetX !== undefined && e.offsetY !== undefined) {
+      // Use offsetX/offsetY if available (most reliable)
+      x = e.offsetX;
+      y = e.offsetY;
+    } else {
+      // Fallback to getBoundingClientRect calculation
+      const rect = canvas.getBoundingClientRect();
+      x = e.clientX - rect.left;
+      y = e.clientY - rect.top;
+    }
+    
+    // Get canvas CSS size for validation
+    const rect = canvas.getBoundingClientRect();
     
     // Debug: Log coordinate calculation for first few points
-    if (Math.random() < 0.1) { // 10% sampling
-      console.log(`[canvas] Point calculation: clientX=${e.clientX.toFixed(2)}, clientY=${e.clientY.toFixed(2)}, rect.left=${rect.left.toFixed(2)}, rect.top=${rect.top.toFixed(2)}, rect.width=${rect.width.toFixed(2)}, rect.height=${rect.height.toFixed(2)}, calculated x=${rawX.toFixed(2)}, y=${rawY.toFixed(2)}`);
+    if (Math.random() < 0.05) { // 5% sampling
+      console.log(`[canvas] Point calculation: offsetX=${(e as any).offsetX?.toFixed(2) || 'N/A'}, offsetY=${(e as any).offsetY?.toFixed(2) || 'N/A'}, clientX=${e.clientX.toFixed(2)}, clientY=${e.clientY.toFixed(2)}, rect.width=${rect.width.toFixed(2)}, rect.height=${rect.height.toFixed(2)}, calculated x=${x.toFixed(2)}, y=${y.toFixed(2)}`);
     }
     
     // Store with sufficient precision to prevent rounding errors
     // Use 4 decimal places for sub-pixel accuracy
     return { 
-      x: Number(rawX.toFixed(4)), 
-      y: Number(rawY.toFixed(4)), 
+      x: Number(x.toFixed(4)), 
+      y: Number(y.toFixed(4)), 
       t: performance.now() 
     };
   }
