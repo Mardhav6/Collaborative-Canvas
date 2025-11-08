@@ -11,6 +11,8 @@ export type StrokeOp = {
   color: string;
   width: number;
   points: Point[];
+  timestamp?: number;
+  serverTimestamp?: number;
   isDeleted?: boolean;
 };
 
@@ -414,22 +416,23 @@ export function createCanvasController(params: {
       if ((s as any).type === 'stroke') {
         if (!(s as any).isDeleted) {
           // CRITICAL: For committed strokes, verify stored coordinates before rendering
-          if (locallyCommittedStrokes.has(s.id)) {
-            const stored = committedStrokeCoordinates.get(s.id);
+          const strokeOp = s as StrokeOp;
+          if (locallyCommittedStrokes.has(strokeOp.id)) {
+            const stored = committedStrokeCoordinates.get(strokeOp.id);
             if (stored && stored.length > 0) {
               // Verify stored coordinates match what we expect
-              const strokeFirst = s.points[0];
+              const strokeFirst = strokeOp.points[0];
               const storedFirst = stored[0];
               if (strokeFirst && storedFirst && 
                   (Math.abs(strokeFirst.x - storedFirst.x) > 0.01 || 
                    Math.abs(strokeFirst.y - storedFirst.y) > 0.01)) {
-                console.warn(`[canvas] Before redrawAll: Stroke ${s.id.substring(0, 16)} has mismatched coordinates. Stroke: (${strokeFirst.x.toFixed(2)}, ${strokeFirst.y.toFixed(2)}), Stored: (${storedFirst.x.toFixed(2)}, ${storedFirst.y.toFixed(2)}). Fixing...`);
+                console.warn(`[canvas] Before redrawAll: Stroke ${strokeOp.id.substring(0, 16)} has mismatched coordinates. Stroke: (${strokeFirst.x.toFixed(2)}, ${strokeFirst.y.toFixed(2)}), Stored: (${storedFirst.x.toFixed(2)}, ${storedFirst.y.toFixed(2)}). Fixing...`);
                 // Fix it before rendering
-                s.points = stored.map(p => ({ x: p.x, y: p.y, t: p.t }));
+                strokeOp.points = stored.map(p => ({ x: p.x, y: p.y, t: p.t }));
               }
             }
           }
-          drawStroke(octx, s as StrokeOp, true); // Always smooth committed strokes
+          drawStroke(octx, strokeOp, true); // Always smooth committed strokes
         }
       } else {
         drawShape(octx, s as any);
