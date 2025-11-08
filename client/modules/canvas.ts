@@ -169,6 +169,13 @@ export function createCanvasController(params: {
       const storedSize = committedStrokeCanvasSize.get(s.id);
       const normalizedPoints = committedStrokeNormalizedCoordinates.get(s.id);
       
+      // DEBUG: Always log what we retrieve from Map
+      if (storedPoints && storedPoints.length > 0) {
+        console.log(`[canvas] drawStroke for committed stroke ${s.id.substring(0, 16)}: Retrieved from Map: first point (${storedPoints[0].x.toFixed(2)}, ${storedPoints[0].y.toFixed(2)}), stroke object: (${s.points[0]?.x.toFixed(2) || 'N/A'}, ${s.points[0]?.y.toFixed(2) || 'N/A'})`);
+      } else {
+        console.error(`[canvas] ERROR: Committed stroke ${s.id.substring(0, 16)} has NO stored coordinates in Map!`);
+      }
+      
       // Check if canvas has resized - if so, recalculate from normalized coordinates
       if (storedPoints && storedSize && normalizedPoints) {
         const currentRect = canvas.getBoundingClientRect();
