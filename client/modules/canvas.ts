@@ -1236,12 +1236,22 @@ export function createCanvasController(params: {
         lastFullRedraw = now;
       } else if (!isActivelyDrawing) {
         // Just blit existing offscreen when not drawing
+        const renderDpr = Math.max(window.devicePixelRatio || 1, 1);
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform for drawImage
         clearCanvas(ctx);
         ctx.drawImage(offscreen, 0, 0);
+        ctx.restore();
+        ctx.setTransform(renderDpr, 0, 0, renderDpr, 0, 0); // Restore transform
       } else {
         // When actively drawing, blit offscreen first, then draw active stroke
+        const renderDpr = Math.max(window.devicePixelRatio || 1, 1);
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform for drawImage
         clearCanvas(ctx);
         ctx.drawImage(offscreen, 0, 0);
+        ctx.restore();
+        ctx.setTransform(renderDpr, 0, 0, renderDpr, 0, 0); // Restore transform
       }
       
       // Always render active stroke preview above committed layer when drawing
