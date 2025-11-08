@@ -795,33 +795,35 @@ export function createCanvasController(params: {
     ctx.fill();
     ctx.restore();
     
-    // ALSO draw a green marker at the ORIGINAL click position (before any calculation)
-    // This is a sanity check - if green appears where you clicked, coordinates are wrong
-    // If red/yellow appears where you clicked, coordinates are correct
-    const rawX = e.clientX - rect.left;
-    const rawY = e.clientY - rect.top;
-    octx.save();
-    octx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
-    octx.fillStyle = 'lime';
-    octx.globalAlpha = 0.6;
-    octx.beginPath();
-    octx.arc(rawX, rawY, 20, 0, Math.PI * 2);
-    octx.fill();
-    octx.restore();
-    
-    ctx.save();
-    ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
-    ctx.fillStyle = 'lime';
-    ctx.globalAlpha = 0.6;
-    ctx.beginPath();
-    ctx.arc(rawX, rawY, 20, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-    
-    console.log(`[canvas] DEBUG: Drew RED/YELLOW marker at CALCULATED (${testPoint.x.toFixed(2)}, ${testPoint.y.toFixed(2)})`);
-    console.log(`[canvas] DEBUG: Drew LIME marker at RAW (${rawX.toFixed(2)}, ${rawY.toFixed(2)})`);
-    
-    console.log(`[canvas] DEBUG: Drew GREEN marker at (${testPoint.x.toFixed(2)}, ${testPoint.y.toFixed(2)}) with DPR ${currentDpr}`);
+    // ALSO draw a lime marker using offsetX/offsetY directly from the event
+    // This helps verify if getBoundingClientRect() or offsetX/offsetY is more accurate
+    const offsetX = (e as any).offsetX;
+    const offsetY = (e as any).offsetY;
+    if (offsetX !== undefined && offsetY !== undefined && !isNaN(offsetX) && !isNaN(offsetY)) {
+      octx.save();
+      octx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
+      octx.fillStyle = 'lime';
+      octx.globalAlpha = 0.6;
+      octx.beginPath();
+      octx.arc(offsetX, offsetY, 20, 0, Math.PI * 2);
+      octx.fill();
+      octx.restore();
+      
+      ctx.save();
+      ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
+      ctx.fillStyle = 'lime';
+      ctx.globalAlpha = 0.6;
+      ctx.beginPath();
+      ctx.arc(offsetX, offsetY, 20, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      
+      console.log(`[canvas] DEBUG: Drew RED/YELLOW at CALCULATED (${testPoint.x.toFixed(2)}, ${testPoint.y.toFixed(2)})`);
+      console.log(`[canvas] DEBUG: Drew LIME at offsetX/Y (${offsetX.toFixed(2)}, ${offsetY.toFixed(2)})`);
+      console.log(`[canvas] DEBUG: Difference: (${Math.abs(testPoint.x - offsetX).toFixed(2)}, ${Math.abs(testPoint.y - offsetY).toFixed(2)})`);
+    } else {
+      console.log(`[canvas] DEBUG: offsetX/offsetY not available, only drew RED/YELLOW at (${testPoint.x.toFixed(2)}, ${testPoint.y.toFixed(2)})`);
+    }
     needsRedraw = true; // Trigger redraw to show marker
     
     if (now - lastStrokeStartTime < 100 && isPointerDown) {
