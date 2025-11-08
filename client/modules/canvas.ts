@@ -697,35 +697,38 @@ export function createCanvasController(params: {
     const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
     ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
     
-    // CRITICAL: Always use getBoundingClientRect() - it's the most reliable
-    // offsetX/offsetY can be unreliable with pointer capture or nested elements
-    // getBoundingClientRect() always gives accurate element-relative coordinates
+    // CRITICAL FIX: Use offsetX/offsetY when available - they are more accurate for canvas elements
+    // getBoundingClientRect() can be affected by page scroll, CSS transforms on parents, etc.
+    // offsetX/offsetY are directly relative to the target element and account for all of this automatically
+    let x: number;
+    let y: number;
+    
+    const offsetX = (e as any).offsetX;
+    const offsetY = (e as any).offsetY;
+    
+    // Try offsetX/offsetY first - these are the most accurate for canvas elements
+    if (offsetX !== undefined && offsetY !== undefined && !isNaN(offsetX) && !isNaN(offsetY)) {
+      x = offsetX;
+      y = offsetY;
+    } else {
+      // Fallback to getBoundingClientRect() if offsetX/offsetY not available
+      const rect = canvas.getBoundingClientRect();
+      x = e.clientX - rect.left;
+      y = e.clientY - rect.top;
+      
+      // Also account for page scroll if any
+      x += window.scrollX || 0;
+      y += window.scrollY || 0;
+    }
+    
+    // Validate coordinates are within canvas bounds
     const rect = canvas.getBoundingClientRect();
-    
-    // Calculate coordinates relative to canvas element's top-left corner
-    // clientX/clientY are viewport coordinates, subtract element position
-    // getBoundingClientRect() already accounts for CSS transforms and scroll
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
-    // Validate coordinates are within canvas bounds (use CSS size, not buffer size)
     if (x < 0 || x > rect.width || y < 0 || y > rect.height) {
       console.warn(`[canvas] Coordinates out of bounds: (${x.toFixed(2)}, ${y.toFixed(2)}), canvas CSS size: ${rect.width.toFixed(2)}x${rect.height.toFixed(2)}`);
     }
     
-    // Debug: Log coordinates to verify accuracy
-    if (Math.random() < 0.05) {
-      const offsetX = (e as any).offsetX;
-      const offsetY = (e as any).offsetY;
-      console.log(`[canvas] Coordinate capture:`);
-      console.log(`  - clientX=${e.clientX.toFixed(1)}, clientY=${e.clientY.toFixed(1)}`);
-      console.log(`  - rect: left=${rect.left.toFixed(1)}, top=${rect.top.toFixed(1)}, width=${rect.width.toFixed(1)}, height=${rect.height.toFixed(1)}`);
-      console.log(`  - Calculated: x=${x.toFixed(2)}, y=${y.toFixed(2)}`);
-      console.log(`  - offsetX=${offsetX !== undefined ? offsetX.toFixed(2) : 'N/A'}, offsetY=${offsetY !== undefined ? offsetY.toFixed(2) : 'N/A'}`);
-      if (offsetX !== undefined && Math.abs(x - offsetX) > 2) {
-        console.warn(`  - MISMATCH! Calculated x=${x.toFixed(2)} vs offsetX=${offsetX.toFixed(2)}, diff=${Math.abs(x - offsetX).toFixed(2)}`);
-      }
-    }
+    // Debug: Always log to help diagnose the issue
+    console.log(`[canvas] Coordinate capture: offsetX=${offsetX !== undefined ? offsetX.toFixed(2) : 'N/A'}, offsetY=${offsetY !== undefined ? offsetY.toFixed(2) : 'N/A'}, final: (${x.toFixed(2)}, ${y.toFixed(2)})`);
     
     // Store with sufficient precision to prevent rounding errors
     // Use 4 decimal places for sub-pixel accuracy
@@ -748,8 +751,6 @@ export function createCanvasController(params: {
     // This helps detect if canvas resizes during drawing
     const rect = canvas.getBoundingClientRect();
     strokeStartCanvasSize = { width: rect.width, height: rect.height };
-    
-    // Get the first point for the stroke - coordinates are already calculated correctly
     
     if (now - lastStrokeStartTime < 100 && isPointerDown) {
       return; // Ignore rapid successive starts
