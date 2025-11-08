@@ -806,8 +806,9 @@ export function createCanvasController(params: {
     }
     ctx.restore();
     
+    const debugRect = canvas.getBoundingClientRect();
     console.log(`[canvas] DEBUG: Click at viewport (${e.clientX.toFixed(1)}, ${e.clientY.toFixed(1)})`);
-    console.log(`[canvas] DEBUG: Canvas rect: left=${rect.left.toFixed(1)}, top=${rect.top.toFixed(1)}, width=${rect.width.toFixed(1)}, height=${rect.height.toFixed(1)}`);
+    console.log(`[canvas] DEBUG: Canvas rect: left=${debugRect.left.toFixed(1)}, top=${debugRect.top.toFixed(1)}, width=${debugRect.width.toFixed(1)}, height=${debugRect.height.toFixed(1)}`);
     console.log(`[canvas] DEBUG: Calculated coords: (${testPoint.x.toFixed(2)}, ${testPoint.y.toFixed(2)})`);
     console.log(`[canvas] DEBUG: offsetX/Y coords: (${offsetX?.toFixed(2) || 'N/A'}, ${offsetY?.toFixed(2) || 'N/A'})`);
     console.log(`[canvas] DEBUG: Canvas buffer: ${canvas.width}x${canvas.height}, DPR: ${currentDpr}`);
