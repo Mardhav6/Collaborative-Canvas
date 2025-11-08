@@ -318,8 +318,23 @@ export function createCanvasController(params: {
   // Network -> apply
   network.onInitialState((opsAny) => {
     const list = opsAny as any[];
-    strokes = list.filter(o => o.type === 'stroke');
+    const serverStrokes = list.filter(o => o.type === 'stroke') as StrokeOp[];
+    const myUserId = network.userId();
+    
+    // CRITICAL: Preserve ALL locally committed strokes - never overwrite them
+    // These have the correct local coordinates and must be preserved
+    const committedStrokes = strokes.filter(s => locallyCommittedStrokes.has(s.id));
+    
+    // Merge server strokes with our committed strokes
+    // Remove server versions of strokes we've committed locally
+    const mergedStrokes = [
+      ...serverStrokes.filter(s => !locallyCommittedStrokes.has(s.id)),
+      ...committedStrokes
+    ];
+    
+    strokes = mergedStrokes;
     shapes = list.filter(o => o.type === 'shape');
+    
     // Sort strokes by timestamp for consistent conflict resolution
     const sorter = (a: any, b: any) => {
       const aTime = a.timestamp || 0;
@@ -690,13 +705,18 @@ export function createCanvasController(params: {
     // Remove any existing stroke with this ID and add our committed version
     // This ensures we're not updating a reference that might be modified
     // CRITICAL: Use the exact coordinates from activeStroke - don't let anything modify them
+    
+    // First, clear activeStroke to prevent any interference
+    const savedActiveStroke = activeStroke;
+    activeStroke = null;
+    
     const existingIndex = strokes.findIndex(s => s.id === committedStrokeId);
     if (existingIndex >= 0) {
       // Replace completely - don't modify existing object
       // This ensures the committed stroke has the exact coordinates that were drawn
       strokes[existingIndex] = strokeToCommit;
     } else {
-      // Add new stroke with exact coordinates
+      // Add new stroke with exact coordinates from where it was drawn
       strokes.push(strokeToCommit);
     }
     
@@ -711,9 +731,27 @@ export function createCanvasController(params: {
       return a.userId.localeCompare(b.userId);
     });
     
-    activeStroke = null;
+    // Force immediate redraw with committed stroke to ensure it's displayed correctly
+    // Use requestAnimationFrame to ensure this happens after any pending operations
+    requestAnimationFrame(() => {
+      // Double-check that our committed stroke is still in the array and has correct coordinates
+      const verifyStroke = strokes.find(s => s.id === committedStrokeId);
+      if (verifyStroke && savedActiveStroke) {
+        // Ensure coordinates match exactly - if not, fix them
+        const pointsMatch = verifyStroke.points.length === savedActiveStroke.points.length &&
+          verifyStroke.points.length > 0 &&
+          Math.abs(verifyStroke.points[0].x - savedActiveStroke.points[0].x) < 0.01 &&
+          Math.abs(verifyStroke.points[0].y - savedActiveStroke.points[0].y) < 0.01;
+        
+        if (!pointsMatch) {
+          // Coordinates were modified somehow - restore from saved
+          verifyStroke.points = savedActiveStroke.points.map(p => ({ x: p.x, y: p.y, t: p.t }));
+          redrawAll();
+        }
+      }
+    });
     
-    // Redraw with committed stroke
+    // Redraw immediately with committed stroke
     redrawAll();
     
     // Send end to server after committing locally
