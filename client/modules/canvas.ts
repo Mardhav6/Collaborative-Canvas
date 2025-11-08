@@ -753,7 +753,6 @@ export function createCanvasController(params: {
     // DEBUG: Draw a green marker at the exact capture point IMMEDIATELY
     // This helps verify that coordinates are captured correctly
     const testPoint = canvasPointFromEvent(e);
-    const rect = canvas.getBoundingClientRect();
     console.log(`[canvas] DEBUG: About to draw GREEN marker:`);
     console.log(`  - Captured point: (${testPoint.x.toFixed(2)}, ${testPoint.y.toFixed(2)})`);
     console.log(`  - Canvas CSS size: ${rect.width.toFixed(2)}x${rect.height.toFixed(2)}`);
