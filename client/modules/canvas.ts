@@ -173,27 +173,48 @@ export function createCanvasController(params: {
       target.lineTo(points[1].x, points[1].y);
       target.stroke();
     } else {
-      // Multiple points - use very smooth quadratic curves
+      // Multiple points - use smooth continuous curves with proper control points
       target.moveTo(points[0].x, points[0].y);
       
-      // Use improved curve algorithm for maximum smoothness
-      // For better smoothness, use control points that create continuous curves
-      for (let i = 1; i < points.length; i++) {
-        const prev = points[i - 1];
-        const curr = points[i];
-        
-        if (i === points.length - 1) {
-          // Last point - smooth curve to it using previous point as control
-          target.quadraticCurveTo(prev.x, prev.y, curr.x, curr.y);
-        } else {
-          // Middle points - use smooth control points for continuous curves
+      // For 3 points, use simple quadratic curve
+      if (points.length === 3) {
+        const cpX = points[1].x;
+        const cpY = points[1].y;
+        target.quadraticCurveTo(cpX, cpY, points[2].x, points[2].y);
+      } else {
+        // For 4+ points, use smooth bezier curves with proper control points
+        for (let i = 0; i < points.length - 1; i++) {
+          const curr = points[i];
           const next = points[i + 1];
-          // Control point is current point, end is smooth interpolation
-          // Use more aggressive smoothing for active strokes (when applySmoothing is false)
-          const smoothFactor = applySmoothing ? 0.5 : 0.6; // More aggressive for real-time
-          const endX = curr.x * (1 - smoothFactor) + next.x * smoothFactor;
-          const endY = curr.y * (1 - smoothFactor) + next.y * smoothFactor;
-          target.quadraticCurveTo(curr.x, curr.y, endX, endY);
+          
+          if (i === 0) {
+            // First segment - smooth start
+            const cpX = curr.x + (next.x - curr.x) * 0.5;
+            const cpY = curr.y + (next.y - curr.y) * 0.5;
+            target.quadraticCurveTo(cpX, cpY, next.x, next.y);
+          } else if (i === points.length - 2) {
+            // Last segment - smooth end
+            const prev = points[i - 1];
+            const cpX = curr.x + (next.x - prev.x) * 0.3;
+            const cpY = curr.y + (next.y - prev.y) * 0.3;
+            target.quadraticCurveTo(cpX, cpY, next.x, next.y);
+          } else {
+            // Middle segments - use cubic bezier for smooth continuous curves
+            const prev = points[i - 1];
+            const after = i + 2 < points.length ? points[i + 2] : next;
+            
+            // Calculate smooth control points for continuous curves
+            // Control point 1: smooth transition from previous segment
+            const cp1x = curr.x + (next.x - prev.x) * 0.3;
+            const cp1y = curr.y + (next.y - prev.y) * 0.3;
+            
+            // Control point 2: smooth transition to next segment
+            const cp2x = next.x - (after.x - curr.x) * 0.3;
+            const cp2y = next.y - (after.y - curr.y) * 0.3;
+            
+            // Use cubic bezier for smoother continuous curves
+            target.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, next.x, next.y);
+          }
         }
       }
       
