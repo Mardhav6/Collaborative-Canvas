@@ -655,33 +655,24 @@ export function createCanvasController(params: {
     const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
     ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
     
-    // CRITICAL: Try multiple methods to get accurate coordinates
-    // Priority: offsetX/offsetY (most accurate) > getBoundingClientRect() > layerX/layerY
+    // CRITICAL: Use offsetX/offsetY if available - these are directly relative to the target element
+    // This is the most accurate method when the event target is the canvas element
     let x: number;
     let y: number;
     
-    // Method 1: Try offsetX/offsetY first (most reliable when event target is canvas)
-    if ((e as any).offsetX !== undefined && (e as any).offsetY !== undefined && !isNaN((e as any).offsetX) && !isNaN((e as any).offsetY)) {
-      x = (e as any).offsetX;
-      y = (e as any).offsetY;
+    const offsetX = (e as any).offsetX;
+    const offsetY = (e as any).offsetY;
+    
+    if (offsetX !== undefined && offsetY !== undefined && !isNaN(offsetX) && !isNaN(offsetY) && offsetX >= 0 && offsetY >= 0) {
+      // Use offsetX/offsetY - these are already relative to the canvas element
+      x = offsetX;
+      y = offsetY;
     } else {
-      // Method 2: Calculate from getBoundingClientRect()
+      // Fallback: Calculate from getBoundingClientRect()
+      // clientX/clientY are viewport coordinates, subtract element position to get element-relative
       const rect = canvas.getBoundingClientRect();
       x = e.clientX - rect.left;
       y = e.clientY - rect.top;
-      
-      // Account for scroll position if needed
-      x += window.scrollX || 0;
-      y += window.scrollY || 0;
-      
-      // Subtract scroll again if canvas is in a scrollable container
-      const canvasRect = canvas.getBoundingClientRect();
-      const stage = canvas.parentElement;
-      if (stage) {
-        const stageRect = stage.getBoundingClientRect();
-        x = e.clientX - stageRect.left;
-        y = e.clientY - stageRect.top;
-      }
     }
     
     // Debug: Always log first few coordinates to diagnose
