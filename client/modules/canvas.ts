@@ -693,38 +693,20 @@ export function createCanvasController(params: {
   });
 
   function canvasPointFromEvent(e: PointerEvent): Point {
-    // Ensure transform is correct - always use current DPR
+    // Get coordinates BEFORE any pointer capture to ensure accuracy
+    // Use getBoundingClientRect() for reliable coordinate calculation
+    const rect = canvas.getBoundingClientRect();
+    
+    // Calculate coordinates relative to canvas element
+    // clientX/clientY are viewport coordinates, subtract canvas position
+    let x = e.clientX - rect.left;
+    let y = e.clientY - rect.top;
+    
+    // Ensure transform is set correctly for rendering
     const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
     ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
     
-    // CRITICAL: Use offsetX/offsetY directly - these are the most accurate for canvas elements
-    // They account for all CSS transforms, padding, borders, and scaling automatically
-    // getBoundingClientRect() can be affected by scroll, parent transforms, etc.
-    let x: number;
-    let y: number;
-    
-    const offsetX = (e as any).offsetX;
-    const offsetY = (e as any).offsetY;
-    
-    if (offsetX !== undefined && offsetY !== undefined && !isNaN(offsetX) && !isNaN(offsetY) && offsetX >= 0 && offsetY >= 0) {
-      // Use offsetX/offsetY directly - these are already in CSS pixel coordinates
-      // and account for all canvas scaling and positioning
-      x = offsetX;
-      y = offsetY;
-    } else {
-      // Fallback: use getBoundingClientRect() if offsetX/offsetY not available
-      const rect = canvas.getBoundingClientRect();
-      x = e.clientX - rect.left;
-      y = e.clientY - rect.top;
-    }
-    
-    // Validate coordinates are within canvas bounds
-    const rect = canvas.getBoundingClientRect();
-    if (x < 0 || x > rect.width || y < 0 || y > rect.height) {
-      console.warn(`[canvas] Coordinates out of bounds: (${x.toFixed(2)}, ${y.toFixed(2)}), canvas CSS: ${rect.width.toFixed(2)}x${rect.height.toFixed(2)}`);
-    }
-    
-    // Store with sufficient precision
+    // Store coordinates in CSS pixel space (the transform handles DPR scaling)
     return { 
       x: Number(x.toFixed(4)), 
       y: Number(y.toFixed(4)), 
@@ -745,64 +727,7 @@ export function createCanvasController(params: {
     const rect = canvas.getBoundingClientRect();
     strokeStartCanvasSize = { width: rect.width, height: rect.height };
     
-    // DEBUG: Test coordinate calculation by drawing markers at multiple positions
-    const testPoint = canvasPointFromEvent(e);
-    const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
-    
-    // Draw red marker at calculated position
-    octx.save();
-    octx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
-    octx.fillStyle = 'red';
-    octx.globalAlpha = 0.9;
-    octx.beginPath();
-    octx.arc(testPoint.x, testPoint.y, 25, 0, Math.PI * 2);
-    octx.fill();
-    
-    // Draw blue marker at (0,0) - should be top-left
-    octx.fillStyle = 'blue';
-    octx.beginPath();
-    octx.arc(0, 0, 20, 0, Math.PI * 2);
-    octx.fill();
-    
-    // Draw green marker at calculated position using offsetX/offsetY directly
-    const offsetX = (e as any).offsetX;
-    const offsetY = (e as any).offsetY;
-    if (offsetX !== undefined && offsetY !== undefined) {
-      octx.fillStyle = 'lime';
-      octx.globalAlpha = 0.7;
-      octx.beginPath();
-      octx.arc(offsetX, offsetY, 20, 0, Math.PI * 2);
-      octx.fill();
-    }
-    octx.restore();
-    
-    // Also draw on main canvas
-    ctx.save();
-    ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
-    ctx.fillStyle = 'red';
-    ctx.globalAlpha = 0.9;
-    ctx.beginPath();
-    ctx.arc(testPoint.x, testPoint.y, 25, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = 'blue';
-    ctx.beginPath();
-    ctx.arc(0, 0, 20, 0, Math.PI * 2);
-    ctx.fill();
-    if (offsetX !== undefined && offsetY !== undefined) {
-      ctx.fillStyle = 'lime';
-      ctx.globalAlpha = 0.7;
-      ctx.beginPath();
-      ctx.arc(offsetX, offsetY, 20, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.restore();
-    
-    const debugRect = canvas.getBoundingClientRect();
-    console.log(`[canvas] DEBUG: Click at viewport (${e.clientX.toFixed(1)}, ${e.clientY.toFixed(1)})`);
-    console.log(`[canvas] DEBUG: Canvas rect: left=${debugRect.left.toFixed(1)}, top=${debugRect.top.toFixed(1)}, width=${debugRect.width.toFixed(1)}, height=${debugRect.height.toFixed(1)}`);
-    console.log(`[canvas] DEBUG: Calculated coords: (${testPoint.x.toFixed(2)}, ${testPoint.y.toFixed(2)})`);
-    console.log(`[canvas] DEBUG: offsetX/Y coords: (${offsetX?.toFixed(2) || 'N/A'}, ${offsetY?.toFixed(2) || 'N/A'})`);
-    console.log(`[canvas] DEBUG: Canvas buffer: ${canvas.width}x${canvas.height}, DPR: ${currentDpr}`);
+    // Get coordinates for the stroke start
     
     if (now - lastStrokeStartTime < 100 && isPointerDown) {
       return; // Ignore rapid successive starts
