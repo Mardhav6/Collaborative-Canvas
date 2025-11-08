@@ -101,11 +101,17 @@ export function createCanvasController(params: {
 
   const dpr = Math.max(window.devicePixelRatio || 1, 1);
 
+  // Ensure main canvas context has correct transform for CSS pixel coordinates
+  // The canvas is sized with DPR, but we draw in CSS pixels
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
   function resizeOffscreen() {
     offscreen.width = canvas.width;
     offscreen.height = canvas.height;
     // match CSS pixel coordinates on offscreen too
     octx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // Reapply transform to main context after resize
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
   resizeOffscreen();
@@ -466,8 +472,17 @@ export function createCanvasController(params: {
 
   function canvasPointFromEvent(e: PointerEvent): Point {
     const rect = canvas.getBoundingClientRect();
+    // Ensure transform is correct before calculating coordinates
+    const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
+    if (currentDpr !== dpr) {
+      // DPR changed, update transform
+      ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
+    }
+    // Calculate coordinates relative to canvas
     // Store in CSS pixel coordinates (canvas transform handles DPR scaling)
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top, t: performance.now() };
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    return { x: x, y: y, t: performance.now() };
   }
 
   let lastStrokeStartTime = 0;
