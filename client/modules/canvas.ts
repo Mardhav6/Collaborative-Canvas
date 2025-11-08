@@ -100,6 +100,8 @@ export function createCanvasController(params: {
   const imageLoading = new Set<string>();
   // Track locally committed strokes - never allow server to overwrite these
   const locallyCommittedStrokes = new Set<string>();
+  // Store original coordinates for committed strokes - these are the source of truth
+  const committedStrokeCoordinates = new Map<string, Point[]>();
 
   const dpr = Math.max(window.devicePixelRatio || 1, 1);
 
@@ -165,9 +167,25 @@ export function createCanvasController(params: {
     target.lineCap = 'round';
 
     target.beginPath();
-    let points = s.points;
     
-    // Apply smoothing for better curve quality (but skip for active strokes during drawing)
+    // CRITICAL: For committed strokes, ALWAYS use the stored original coordinates
+    // This ensures strokes never move, even if server updates modify the stroke object
+    let points: Point[];
+    if (locallyCommittedStrokes.has(s.id)) {
+      const storedPoints = committedStrokeCoordinates.get(s.id);
+      if (storedPoints && storedPoints.length > 0) {
+        // Use the stored original coordinates - these are the source of truth
+        points = storedPoints;
+      } else {
+        // Fallback to stroke points if stored coordinates not found
+        points = s.points;
+      }
+    } else {
+      // For non-committed strokes, use the stroke's points
+      points = s.points;
+    }
+    
+    // Apply smoothing for better curve quality
     if (applySmoothing && points.length > 2) {
       points = smoothPoints(points);
     }
@@ -324,6 +342,16 @@ export function createCanvasController(params: {
     // CRITICAL: Preserve ALL locally committed strokes - never overwrite them
     // These have the correct local coordinates and must be preserved
     const committedStrokes = strokes.filter(s => locallyCommittedStrokes.has(s.id));
+    
+    // For each committed stroke, ensure its coordinates in the Map are preserved
+    // and restore the stroke's points from the Map if they were modified
+    committedStrokes.forEach(stroke => {
+      const storedCoords = committedStrokeCoordinates.get(stroke.id);
+      if (storedCoords) {
+        // Restore points from stored coordinates - these are the source of truth
+        stroke.points = storedCoords.map(p => ({ x: p.x, y: p.y, t: p.t }));
+      }
+    });
     
     // Merge server strokes with our committed strokes
     // Remove server versions of strokes we've committed locally
@@ -483,6 +511,17 @@ export function createCanvasController(params: {
       const ourCommittedStrokes = strokes.filter(s => 
         locallyCommittedStrokes.has(s.id) || (s.userId === myUserId && s.id !== activeStroke?.id)
       );
+      
+      // For each committed stroke, restore coordinates from the Map
+      ourCommittedStrokes.forEach(stroke => {
+        if (locallyCommittedStrokes.has(stroke.id)) {
+          const storedCoords = committedStrokeCoordinates.get(stroke.id);
+          if (storedCoords) {
+            // Restore points from stored coordinates - these are the source of truth
+            stroke.points = storedCoords.map(p => ({ x: p.x, y: p.y, t: p.t }));
+          }
+        }
+      });
       
       // Preserve active stroke if we're currently drawing
       if (activeStroke) {
@@ -696,6 +735,10 @@ export function createCanvasController(params: {
       t: p.t 
     }));
     
+    // CRITICAL: Store original coordinates in a separate Map
+    // This is the source of truth - these coordinates will NEVER be modified
+    committedStrokeCoordinates.set(committedStrokeId, exactPoints.map(p => ({ x: p.x, y: p.y, t: p.t })));
+    
     const strokeToCommit: StrokeOp = {
       id: activeStroke.id,
       userId: activeStroke.userId,
@@ -743,53 +786,8 @@ export function createCanvasController(params: {
       return a.userId.localeCompare(b.userId);
     });
     
-    // Set up a guard to protect this committed stroke
-    // Check periodically that coordinates haven't been modified
-    const originalPoints = exactPoints.map(p => ({ x: p.x, y: p.y }));
-    let checkCount = 0;
-    const maxChecks = 10; // Check 10 times over 1 second
-    
-    const verifyInterval = setInterval(() => {
-      checkCount++;
-      const verifyStroke = strokes.find(s => s.id === committedStrokeId);
-      
-      if (!verifyStroke || !locallyCommittedStrokes.has(committedStrokeId)) {
-        // Stroke was removed or uncommitted - stop checking
-        clearInterval(verifyInterval);
-        return;
-      }
-      
-      // Check if coordinates were modified
-      if (verifyStroke.points.length !== originalPoints.length) {
-        // Points count changed - restore
-        verifyStroke.points = originalPoints.map((p, i) => ({ 
-          x: p.x, 
-          y: p.y, 
-          t: verifyStroke.points[i]?.t || Date.now() 
-        }));
-        redrawAll();
-      } else if (verifyStroke.points.length > 0) {
-        // Check first point matches
-        const firstOriginal = originalPoints[0];
-        const firstCurrent = verifyStroke.points[0];
-        if (Math.abs(firstCurrent.x - firstOriginal.x) > 0.5 || 
-            Math.abs(firstCurrent.y - firstOriginal.y) > 0.5) {
-          // Coordinates were modified - restore
-          verifyStroke.points = originalPoints.map((p, i) => ({ 
-            x: p.x, 
-            y: p.y, 
-            t: verifyStroke.points[i]?.t || Date.now() 
-          }));
-          redrawAll();
-        }
-      }
-      
-      if (checkCount >= maxChecks) {
-        clearInterval(verifyInterval);
-      }
-    }, 100); // Check every 100ms for 1 second
-    
     // Redraw immediately with committed stroke
+    // The drawStroke function will automatically use stored coordinates from the Map
     redrawAll();
     
     // Send end to server after committing locally
