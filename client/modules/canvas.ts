@@ -114,10 +114,12 @@ export function createCanvasController(params: {
   function resizeOffscreen() {
     offscreen.width = canvas.width;
     offscreen.height = canvas.height;
-    // match CSS pixel coordinates on offscreen too
-    octx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    // Reapply transform to main context after resize
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // CRITICAL: Always use current DPR, not cached dpr variable
+    // This ensures transforms match between main and offscreen canvas
+    const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
+    octx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
+    // Reapply transform to main context after resize to ensure consistency
+    ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
   }
 
   resizeOffscreen();
