@@ -345,20 +345,26 @@ export function createCanvasController(params: {
       return;
     }
     
-    // If this was our active stroke but we're done drawing, add it now
-    if (activeStroke && activeStroke.id === stroke.id && !isPointerDown) {
-      // Stroke is done, but make sure we use the local version which has more points
-      // Only sync metadata, keep local points for smoothness
-      activeStroke.color = stroke.color;
-      activeStroke.width = stroke.width;
-      activeStroke.mode = stroke.mode;
+    // If stroke is already committed (exists in strokes array), DON'T overwrite it
+    // The local version has the correct, smooth coordinates
+    if (existing && existing.userId === network.userId()) {
+      // This is our own committed stroke - preserve local points, only sync metadata
+      existing.color = stroke.color;
+      existing.width = stroke.width;
+      existing.mode = stroke.mode;
       if ((stroke as any).timestamp) {
-        activeStroke.timestamp = (stroke as any).timestamp;
+        existing.timestamp = (stroke as any).timestamp;
       }
       if ((stroke as any).serverTimestamp) {
-        (activeStroke as any).serverTimestamp = (stroke as any).serverTimestamp;
+        (existing as any).serverTimestamp = (stroke as any).serverTimestamp;
       }
-      // Don't add to strokes array yet - it will be added in endStroke
+      // DON'T overwrite points - local version is more accurate
+      return;
+    }
+    
+    // If this was our active stroke but we're done drawing, ignore it
+    // It's already been committed with local points in endStroke
+    if (activeStroke && activeStroke.id === stroke.id && !isPointerDown) {
       return;
     }
     
@@ -393,6 +399,17 @@ export function createCanvasController(params: {
       return;
     }
     
+    // Find the stroke in the array
+    const s = strokes.find(x => x.id === id);
+    
+    // If this is our own committed stroke, DON'T overwrite points
+    // Local version has the correct, smooth coordinates
+    if (s && s.userId === network.userId()) {
+      // This is our own stroke - preserve local points, ignore server patches
+      // Server might have fewer points or different coordinates
+      return;
+    }
+    
     // Update active stroke if it matches (but only if not actively drawing)
     if (activeStroke && activeStroke.id === id && !isPointerDown) {
       // Don't overwrite local points - they're smoother
@@ -400,19 +417,11 @@ export function createCanvasController(params: {
       if (points.length > activeStroke.points.length) {
         activeStroke.points = points as Point[];
       }
-      // Update the stroke in array too
-      const s = strokes.find(x => x.id === id);
-      if (s) {
-        if (points.length > s.points.length) {
-          s.points = points as Point[];
-        }
-      }
       needsRedraw = true;
       return;
     }
     
     // Update other users' strokes
-    const s = strokes.find(x => x.id === id);
     if (!s) {
       // Stroke not found - might be from another user who started before we joined
       // Try to find it in server state or create a placeholder
@@ -435,21 +444,33 @@ export function createCanvasController(params: {
       const list = opsAny as any[];
       const newStrokes = list.filter(o => o.type === 'stroke') as StrokeOp[];
       const newShapes = list.filter(o => o.type === 'shape') as (ShapeRect | ShapeCircle | ShapeText | ShapeImage)[];
+      const myUserId = network.userId();
+      
+      // Preserve our own committed strokes - they have the correct local coordinates
+      const ourStrokes = strokes.filter(s => s.userId === myUserId && s.id !== activeStroke?.id);
+      
       // Preserve active stroke if we're currently drawing
       if (activeStroke) {
         const activeInState = newStrokes.find(s => s.id === activeStroke!.id);
         if (!activeInState) {
           // Our active stroke isn't in server state yet - keep it
-          strokes = [...newStrokes, activeStroke];
+          strokes = [...newStrokes.filter(s => s.userId !== myUserId), ...ourStrokes, activeStroke];
           shapes = newShapes;
         } else {
-          // Server has it - use server version
-          strokes = newStrokes;
+          // Server has it - but keep our local version if we're drawing
+          if (isPointerDown) {
+            strokes = [...newStrokes.filter(s => s.userId !== myUserId), ...ourStrokes, activeStroke];
+          } else {
+            strokes = [...newStrokes.filter(s => s.userId !== myUserId), ...ourStrokes];
+          }
           shapes = newShapes;
-          activeStroke = activeInState; // Sync with server version
+          if (!isPointerDown) {
+            activeStroke = activeInState; // Only sync if not drawing
+          }
         }
       } else {
-        strokes = newStrokes;
+        // Merge server strokes with our local committed strokes
+        strokes = [...newStrokes.filter(s => s.userId !== myUserId), ...ourStrokes];
         shapes = newShapes;
       }
       // Sort by timestamp for consistent conflict resolution
@@ -609,10 +630,15 @@ export function createCanvasController(params: {
       return;
     }
     
-    // Commit the active stroke to the strokes array if not already there
+    // Commit the active stroke to the strokes array - preserve local smooth points
+    const strokeToCommit = { ...activeStroke };
+    // Deep copy points array to prevent any modifications
+    strokeToCommit.points = activeStroke.points.map(p => ({ ...p }));
+    
     const existing = strokes.find(s => s.id === activeStroke!.id);
     if (!existing) {
-      strokes.push({ ...activeStroke }); // Copy to avoid reference issues
+      // Add the stroke with local points - these are the accurate, smooth points
+      strokes.push(strokeToCommit);
       // Sort strokes after adding to maintain order
       strokes.sort((a, b) => {
         const aTime = a.timestamp || 0;
@@ -623,15 +649,23 @@ export function createCanvasController(params: {
         if (aServerTime !== bServerTime) return aServerTime - bServerTime;
         return a.userId.localeCompare(b.userId);
       });
-      redrawAll();
     } else {
-      // Update existing stroke with final points
-      existing.points = [...activeStroke.points];
-      redrawAll();
+      // Update existing stroke with final LOCAL points - don't let server overwrite
+      existing.points = strokeToCommit.points;
+      existing.color = strokeToCommit.color;
+      existing.width = strokeToCommit.width;
+      existing.mode = strokeToCommit.mode;
     }
     
-    network.sendStrokeEnd(activeStroke.id);
+    // Mark stroke as committed so server updates don't overwrite it
+    const committedStrokeId = strokeToCommit.id;
     activeStroke = null;
+    
+    // Redraw with committed stroke
+    redrawAll();
+    
+    // Send end to server after committing locally
+    network.sendStrokeEnd(committedStrokeId);
     needsRedraw = true;
     if (e) e.preventDefault();
   }
