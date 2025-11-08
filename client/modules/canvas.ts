@@ -813,14 +813,16 @@ export function createCanvasController(params: {
     }
 
     isPointerDown = true;
-    // CRITICAL: Get coordinates BEFORE pointer capture
-    // Pointer capture can change event.target, affecting offsetX/offsetY
+    // CRITICAL: Get coordinates BEFORE pointer capture to ensure accuracy
     const p = canvasPointFromEvent(e);
+    
     // Capture pointer AFTER getting coordinates
     try { (e.target as Element).setPointerCapture?.((e as unknown as PointerEvent).pointerId); } catch {}
+    
     const mode = getTool() === 'eraser' ? 'erase' : 'draw';
-    // Add client-side timestamp for conflict resolution
     const clientTimestamp = Date.now();
+    
+    // Create active stroke with the captured coordinates
     activeStroke = {
       id: network.newOpId(),
       userId: network.userId(),
@@ -829,8 +831,9 @@ export function createCanvasController(params: {
       color: getColor(),
       width: getStrokeWidth(),
       points: [p],
-      timestamp: clientTimestamp, // Client timestamp for conflict resolution
+      timestamp: clientTimestamp,
     };
+    
     network.sendStrokeStart(activeStroke);
     e.preventDefault();
   }
