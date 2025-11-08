@@ -244,7 +244,14 @@ export function createCanvasController(params: {
     // Early return if no points to render
     if (!pointsToRender || pointsToRender.length < 1) return;
     
+    // CRITICAL: Ensure transform is set correctly before drawing
+    // The target context (octx or ctx) should already have the transform set,
+    // but we ensure it here for safety
+    const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
     target.save();
+    // Ensure transform matches - this is critical for coordinate accuracy
+    target.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
+    
     if (s.mode === 'erase') {
       target.globalCompositeOperation = 'destination-out';
       target.strokeStyle = 'rgba(0,0,0,1)';
@@ -746,27 +753,47 @@ export function createCanvasController(params: {
     // DEBUG: Draw a green marker at the exact capture point IMMEDIATELY
     // This helps verify that coordinates are captured correctly
     const testPoint = canvasPointFromEvent(e);
-    console.log(`[canvas] DEBUG: About to draw GREEN marker at (${testPoint.x.toFixed(2)}, ${testPoint.y.toFixed(2)})`);
+    const rect = canvas.getBoundingClientRect();
+    console.log(`[canvas] DEBUG: About to draw GREEN marker:`);
+    console.log(`  - Captured point: (${testPoint.x.toFixed(2)}, ${testPoint.y.toFixed(2)})`);
+    console.log(`  - Canvas CSS size: ${rect.width.toFixed(2)}x${rect.height.toFixed(2)}`);
+    console.log(`  - Canvas buffer size: ${canvas.width}x${canvas.height}`);
+    console.log(`  - Click position: clientX=${e.clientX.toFixed(1)}, clientY=${e.clientY.toFixed(1)}`);
+    console.log(`  - Canvas rect: left=${rect.left.toFixed(1)}, top=${rect.top.toFixed(1)}`);
     
-    // Draw marker directly on the canvas without clearing
-    // Use requestAnimationFrame to ensure it's drawn after any pending clears
-    requestAnimationFrame(() => {
-      const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
-      ctx.save();
-      ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
-      ctx.fillStyle = 'lime';
-      ctx.globalAlpha = 1.0;
-      ctx.beginPath();
-      ctx.arc(testPoint.x, testPoint.y, 12, 0, Math.PI * 2);
-      ctx.fill();
-      // Draw a smaller black dot in center for precise verification
-      ctx.fillStyle = 'black';
-      ctx.beginPath();
-      ctx.arc(testPoint.x, testPoint.y, 3, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-      console.log(`[canvas] DEBUG: Drew GREEN marker at (${testPoint.x.toFixed(2)}, ${testPoint.y.toFixed(2)}) with transform ${currentDpr}`);
-    });
+    // Draw marker DIRECTLY on offscreen canvas so it persists through redraws
+    // This ensures the marker is drawn at the exact coordinates we captured
+    const currentDpr = Math.max(window.devicePixelRatio || 1, 1);
+    octx.save();
+    octx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
+    octx.fillStyle = 'lime';
+    octx.globalAlpha = 0.9;
+    octx.beginPath();
+    octx.arc(testPoint.x, testPoint.y, 15, 0, Math.PI * 2);
+    octx.fill();
+    // Draw a smaller black dot in center for precise verification
+    octx.fillStyle = 'black';
+    octx.beginPath();
+    octx.arc(testPoint.x, testPoint.y, 4, 0, Math.PI * 2);
+    octx.fill();
+    octx.restore();
+    
+    // Also draw on main canvas for immediate visual feedback
+    ctx.save();
+    ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
+    ctx.fillStyle = 'lime';
+    ctx.globalAlpha = 0.9;
+    ctx.beginPath();
+    ctx.arc(testPoint.x, testPoint.y, 15, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'black';
+    ctx.beginPath();
+    ctx.arc(testPoint.x, testPoint.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    
+    console.log(`[canvas] DEBUG: Drew GREEN marker at (${testPoint.x.toFixed(2)}, ${testPoint.y.toFixed(2)}) with DPR ${currentDpr}`);
+    needsRedraw = true; // Trigger redraw to show marker
     
     if (now - lastStrokeStartTime < 100 && isPointerDown) {
       return; // Ignore rapid successive starts
