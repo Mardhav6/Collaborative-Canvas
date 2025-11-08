@@ -628,12 +628,14 @@ export function createCanvasController(params: {
     
     // Calculate coordinates in CSS pixel space
     // These coordinates are relative to the canvas element's top-left corner
-    // and will work correctly with the canvas transform (which scales by DPR)
+    // CRITICAL: These are CSS pixel coordinates that work with the canvas transform
+    // The transform scales by DPR, so CSS pixels map directly to the coordinate system
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     
     // Store with sufficient precision to prevent rounding errors
     // Use 4 decimal places for sub-pixel accuracy
+    // Don't clamp - allow coordinates slightly outside bounds for edge cases
     return { 
       x: Number(x.toFixed(4)), 
       y: Number(y.toFixed(4)), 
@@ -641,10 +643,18 @@ export function createCanvasController(params: {
     };
   }
 
+  // Store canvas size at stroke start to detect resizing
+  let strokeStartCanvasSize: { width: number; height: number } | null = null;
+  
   let lastStrokeStartTime = 0;
   function startStroke(e: PointerEvent) {
     // Prevent rapid double-taps from interfering
     const now = performance.now();
+    
+    // CRITICAL: Capture canvas size at stroke start
+    // This helps detect if canvas resizes during drawing
+    const rect = canvas.getBoundingClientRect();
+    strokeStartCanvasSize = { width: rect.width, height: rect.height };
     if (now - lastStrokeStartTime < 100 && isPointerDown) {
       return; // Ignore rapid successive starts
     }
@@ -794,6 +804,25 @@ export function createCanvasController(params: {
     const rect = canvas.getBoundingClientRect();
     const commitCanvasWidth = rect.width;
     const commitCanvasHeight = rect.height;
+    
+    // CRITICAL: Check if canvas resized during drawing
+    // If it did, we need to scale coordinates to match the new canvas size
+    if (strokeStartCanvasSize) {
+      const sizeDiff = Math.abs(rect.width - strokeStartCanvasSize.width) + Math.abs(rect.height - strokeStartCanvasSize.height);
+      if (sizeDiff > 1) {
+        console.warn(`[canvas] Canvas resized during drawing! Start: ${strokeStartCanvasSize.width.toFixed(2)}x${strokeStartCanvasSize.height.toFixed(2)}, Commit: ${commitCanvasWidth.toFixed(2)}x${commitCanvasHeight.toFixed(2)}. Scaling coordinates.`);
+        // Scale coordinates to match new canvas size
+        const scaleX = commitCanvasWidth / strokeStartCanvasSize.width;
+        const scaleY = commitCanvasHeight / strokeStartCanvasSize.height;
+        // Adjust all points to account for canvas resize
+        for (let i = 0; i < lockedPointsRounded.length; i++) {
+          lockedPointsRounded[i].x = Number((lockedPointsRounded[i].x * scaleX).toFixed(4));
+          lockedPointsRounded[i].y = Number((lockedPointsRounded[i].y * scaleY).toFixed(4));
+        }
+        console.log(`[canvas] Scaled coordinates by ${scaleX.toFixed(4)}x${scaleY.toFixed(4)} to account for resize`);
+      }
+    }
+    strokeStartCanvasSize = null; // Reset for next stroke
     
     // Store coordinates along with canvas dimensions
     // Use rounded version for storage to prevent floating point drift
