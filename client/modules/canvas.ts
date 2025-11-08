@@ -704,10 +704,24 @@ export function createCanvasController(params: {
     
     // Calculate coordinates relative to canvas element's top-left corner
     // clientX/clientY are viewport coordinates, subtract element position
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    // getBoundingClientRect() already accounts for CSS transforms and scroll
+    let x = e.clientX - rect.left;
+    let y = e.clientY - rect.top;
     
-    // Validate coordinates are within canvas bounds
+    // IMPORTANT: getBoundingClientRect() accounts for page scroll automatically
+    // But we need to ensure we're using the correct coordinate space
+    // The canvas element might have borders or padding - check computed styles
+    const computedStyle = window.getComputedStyle(canvas);
+    const borderLeft = parseFloat(computedStyle.borderLeftWidth) || 0;
+    const borderTop = parseFloat(computedStyle.borderTopWidth) || 0;
+    const paddingLeft = parseFloat(computedStyle.paddingLeft) || 0;
+    const paddingTop = parseFloat(computedStyle.paddingTop) || 0;
+    
+    // Subtract borders and padding to get content-relative coordinates
+    x -= (borderLeft + paddingLeft);
+    y -= (borderTop + paddingTop);
+    
+    // Validate coordinates are within canvas bounds (use CSS size, not buffer size)
     if (x < 0 || x > rect.width || y < 0 || y > rect.height) {
       console.warn(`[canvas] Coordinates out of bounds: (${x.toFixed(2)}, ${y.toFixed(2)}), canvas CSS size: ${rect.width.toFixed(2)}x${rect.height.toFixed(2)}`);
     }
@@ -716,15 +730,14 @@ export function createCanvasController(params: {
     if (Math.random() < 0.05) {
       const offsetX = (e as any).offsetX;
       const offsetY = (e as any).offsetY;
-      const calcX = e.clientX - rect.left;
-      const calcY = e.clientY - rect.top;
       console.log(`[canvas] Coordinate capture:`);
       console.log(`  - clientX=${e.clientX.toFixed(1)}, clientY=${e.clientY.toFixed(1)}`);
       console.log(`  - rect: left=${rect.left.toFixed(1)}, top=${rect.top.toFixed(1)}, width=${rect.width.toFixed(1)}, height=${rect.height.toFixed(1)}`);
-      console.log(`  - Calculated: x=${calcX.toFixed(2)}, y=${calcY.toFixed(2)}`);
+      console.log(`  - border: left=${borderLeft}, top=${borderTop}, padding: left=${paddingLeft}, top=${paddingTop}`);
+      console.log(`  - Calculated: x=${x.toFixed(2)}, y=${y.toFixed(2)}`);
       console.log(`  - offsetX=${offsetX !== undefined ? offsetX.toFixed(2) : 'N/A'}, offsetY=${offsetY !== undefined ? offsetY.toFixed(2) : 'N/A'}`);
-      if (offsetX !== undefined && Math.abs(calcX - offsetX) > 1) {
-        console.warn(`  - MISMATCH! Calculated x=${calcX.toFixed(2)} vs offsetX=${offsetX.toFixed(2)}, diff=${Math.abs(calcX - offsetX).toFixed(2)}`);
+      if (offsetX !== undefined && Math.abs(x - offsetX) > 2) {
+        console.warn(`  - MISMATCH! Calculated x=${x.toFixed(2)} vs offsetX=${offsetX.toFixed(2)}, diff=${Math.abs(x - offsetX).toFixed(2)}`);
       }
     }
     
